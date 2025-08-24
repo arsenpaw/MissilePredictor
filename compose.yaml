@@ -1,0 +1,7 @@
+﻿services:
+  missilepredictor:
+    image: missilepredictor
+    build:
+      context: .
+      dockerfile: MissilePredictor/Dockerfile
+

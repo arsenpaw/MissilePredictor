@@ -1,0 +1,6 @@
+@MissilePredictor_HostAddress = http://localhost:5102
+
+GET {{MissilePredictor_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

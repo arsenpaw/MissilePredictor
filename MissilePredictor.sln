@@ -1,0 +1,35 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MissilePredictor.API", "MissilePredictor.API\MissilePredictor.API.csproj", "{A23B2FD1-5B1A-43DE-BDEA-23454F7AC31B}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{A0018D72-8370-436D-B5A3-07CA477D1893}"
+	ProjectSection(SolutionItems) = preProject
+		compose.yaml = compose.yaml
+	EndProjectSection
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MissilePredictor.AI", "MissilePredictor.AI\MissilePredictor.AI.csproj", "{2C359B42-4980-46D7-A6B1-D5D6E654D386}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MissilePredictor.Trainer", "MissilePredictor.Trainer\MissilePredictor.Trainer.csproj", "{055AE2E4-ABFD-49F4-AFCF-258E3E6A8F9E}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{A23B2FD1-5B1A-43DE-BDEA-23454F7AC31B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A23B2FD1-5B1A-43DE-BDEA-23454F7AC31B}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A23B2FD1-5B1A-43DE-BDEA-23454F7AC31B}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A23B2FD1-5B1A-43DE-BDEA-23454F7AC31B}.Release|Any CPU.Build.0 = Release|Any CPU
+		{2C359B42-4980-46D7-A6B1-D5D6E654D386}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{2C359B42-4980-46D7-A6B1-D5D6E654D386}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{2C359B42-4980-46D7-A6B1-D5D6E654D386}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{2C359B42-4980-46D7-A6B1-D5D6E654D386}.Release|Any CPU.Build.0 = Release|Any CPU
+		{055AE2E4-ABFD-49F4-AFCF-258E3E6A8F9E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{055AE2E4-ABFD-49F4-AFCF-258E3E6A8F9E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{055AE2E4-ABFD-49F4-AFCF-258E3E6A8F9E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{055AE2E4-ABFD-49F4-AFCF-258E3E6A8F9E}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+	EndGlobalSection
+EndGlobal

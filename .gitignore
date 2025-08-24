@@ -1,0 +1,11 @@
+bin/
+obj/
+/packages/
+riderModule.iml
+/_ReSharper.Caches/
+MissilePredictor.API/appsettings.Development.json
+MissilePredictor.API/appsettings.Development.json
+MissilePredictor.API/appsettings.Production.json
+MissilePredictor.API/appsettings.Production.json
+/.idea
+MissilePredictor.API/tg.session
