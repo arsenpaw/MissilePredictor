@@ -30,7 +30,7 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 
-app.MapPost("/alerts",async  (PredictionDangerousMessageService svc, TgScraperService thSvc) =>
+app.MapGet("/alerts",async  (PredictionDangerousMessageService svc, TgScraperService thSvc) =>
 {
     var messages = await thSvc.GetUnreadMessagesAsync();
     var predictionResponse = svc.PredictMany(messages.Select(x => x.Text));

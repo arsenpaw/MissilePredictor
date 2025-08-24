@@ -11,13 +11,16 @@ public sealed class TgScraperService : IAsyncDisposable
 {
     private readonly TelegramConfig _opt;
     private readonly Client _client;
+    private readonly ILogger<TgScraperService> _logger;
 
-    public TgScraperService(IOptions<TelegramConfig> opt)
+    public TgScraperService(IOptions<TelegramConfig> opt,  ILogger<TgScraperService> logger)
     {
         _opt = opt.Value;
         var cwd = Directory.GetCurrentDirectory();
         var path = Path.Combine(cwd, opt.Value.SessionPath);
         var isExists = File.Exists(path);
+       _logger = logger;
+       _logger.LogInformation($"Session existanse status: {isExists}");
         _client = !isExists ? new Client() : new Client(Config);
 
     }
@@ -63,6 +66,8 @@ public sealed class TgScraperService : IAsyncDisposable
     private string? Config(string what) => what switch
     {
         "api_hash" => _opt.ApiHash,
+        "api_id" => _opt.ApiId.ToString(),
+        "session_pathname" => _opt.SessionPath,
         "phone_number" => _opt.PhoneNumber,
         _ => null
     };
