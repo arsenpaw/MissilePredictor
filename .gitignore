@@ -10,3 +10,4 @@ MissilePredictor.API/appsettings.Production.json
 /.idea
 MissilePredictor.API/tg.session
 .env
+tg.session

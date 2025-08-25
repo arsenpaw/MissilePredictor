@@ -1,21 +1,18 @@
-﻿version: "3.8"
-services:
+﻿services:
   api:
     image: testy
     environment:
-      Telegram__ApiId: "${TELEGRAM_API_ID}"
-      Telegram__ApiHash: "${TELEGRAM_API_HASH}"
-      Telegram__Channel: "${TELEGRAM_CHANNEL}"
-      Telegram__PhoneNumber: "${Telegram_PhoneNumber}"
+      ASPNETCORE_URLS: http://+:8080
+      Telegram__ApiId: ${TELEGRAM_API_ID}
+      Telegram__ApiHash: ${TELEGRAM_API_HASH}
+      Telegram__Channel: ${TELEGRAM_CHANNEL}
+      Telegram__PhoneNumber: ${TELEGRAM_PHONE_NUMBER}
       Telegram__SessionPath: /app/tg.session
       Telegram__LastIdPath: /app/msg.json
       ML__ModelPath: /app/models/sentiment.zip
-
     ports:
       - "3000:8080"
-
     volumes:
-      - ./MissilePredictor.API/tg.session:/app/tg.session:rw
+      - ./tg.session:/app/tg.session:rw
       - ./models/sentiment.zip:/app/models/sentiment.zip:ro
-
     restart: unless-stopped
