@@ -11,3 +11,5 @@ MissilePredictor.API/appsettings.Production.json
 MissilePredictor.API/tg.session
 .env
 tg.session
+MissilePredictor.API/WTelegram.session
+MissilePredictor.API/msg.json

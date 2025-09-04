@@ -1,3 +1,5 @@
+using System.Text.Encodings.Web;
+using System.Text.Json;
 using Microsoft.Extensions.ML;
 using MissilePredictor.AI.Models;
 using MissilePredictor.AI.Services;
@@ -30,16 +32,28 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 
-app.MapGet("/alerts",async  (PredictionDangerousMessageService svc, TgScraperService thSvc) =>
+app.MapGet("/alerts", async (
+    PredictionDangerousMessageService svc,
+    TgScraperService thSvc,
+    ILogger<Program> logger) =>
 {
     var messages = await thSvc.GetUnreadMessagesAsync();
     var predictionResponse = svc.PredictMany(messages.Select(x => x.Text));
-    var dangerousMessage = messages
-        .Zip(predictionResponse)
-        .Where(x => x.Second.Prediction is true)
-        .Select(x => x.First.Text);
-    
-    return Results.Ok(dangerousMessage);
+
+
+
+    var concat = messages
+        .Zip(predictionResponse, (m, p) => new { m, p }).ToList();
+    logger.LogWarning("Prediction result: {prediction}", 
+        JsonSerializer.Serialize(concat, new JsonSerializerOptions
+        {
+            WriteIndented = true,
+            Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+        }));
+    var dangerous = concat.Where(x => x.p.Prediction)
+        .Select(x => new { message = x.m.Text });
+
+    return Results.Ok(dangerous);
 });
 
 app.Run();

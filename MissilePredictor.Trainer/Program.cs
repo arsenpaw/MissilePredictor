@@ -54,9 +54,9 @@ public static class Program
 
         ml.Model.Save(model, split.TrainSet.Schema, modelPath);
         Console.WriteLine($"Saved model → {modelPath}");
-        var onnxPath = Path.ChangeExtension(modelPath, ".onnx");
-        using var fs = File.Create(onnxPath);
-        ml.Model.ConvertToOnnx(model, split.TrainSet, fs);
+        // var onnxPath = Path.ChangeExtension(modelPath, ".onnx");
+        // using var fs = File.Create(onnxPath);
+        // ml.Model.ConvertToOnnx(model, split.TrainSet, fs);
     }
 
     private static IEnumerable<SentimentData> ReadCsv(string path)

@@ -16,12 +16,9 @@ public sealed class TgScraperService : IAsyncDisposable
     public TgScraperService(IOptions<TelegramConfig> opt,  ILogger<TgScraperService> logger)
     {
         _opt = opt.Value;
-        var cwd = Directory.GetCurrentDirectory();
-        var path = Path.Combine(cwd, opt.Value.SessionPath);
-        var isExists = File.Exists(path);
+        var cwd = AppContext.BaseDirectory;
        _logger = logger;
-       _logger.LogInformation($"Session existanse status: {isExists}");
-        _client = !isExists ? new Client() : new Client(Config);
+        _client = new Client(Config);
 
     }
 
