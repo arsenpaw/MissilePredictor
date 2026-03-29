@@ -1,6 +1,7 @@
 ﻿services:
   api:
     build: .
+    entrypoint: ["/bin/sh", "-c", "chmod -R 777 /app/data && dotnet MissilePredictor.API.dll"]
     user: root
     ports:
       - "${PORT}:8080"
@@ -15,4 +16,4 @@
       - Telegram__PhoneNumber=${TELEGRAM_PHONE}
       - Google__SpreadsheetId=${GOOGLE_SPREADSHEET_ID}
       - Google__Range=${GOOGLE_RANGE}
-      - Google__CredentialsFilePath=/app/data/credentials.json
+      - Google__CredentialsFilePath=/app/data/credentials.json  
