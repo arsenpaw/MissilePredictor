@@ -1,18 +1,15 @@
 ﻿services:
   api:
-    image: vafelka/missile-predictor:latest
-    environment:
-      ASPNETCORE_URLS: http://+:8080
-      Telegram__ApiId: ${TELEGRAM_API_ID}
-      Telegram__ApiHash: ${TELEGRAM_API_HASH}
-      Telegram__Channel: ${TELEGRAM_CHANNEL}
-      Telegram__PhoneNumber: ${TELEGRAM_PHONE_NUMBER}
-      Telegram__SessionPath: /app/WTelegram.session
-      Telegram__LastIdPath: /app/msg.json
-      ML__ModelPath: /app/models/sentiment.zip
+    build: .
     ports:
-      - "3000:8080"
+      - "8080:8080"
     volumes:
-      - ./tg.session:/app/WTelegram.session:rw
-      - ./models/sentiment.zip:/app/models/sentiment.zip:ro
-    restart: unless-stopped
+      - ./data:/app/data
+    environment:
+      - Telegram__ApiId=${TELEGRAM_API_ID}
+      - Telegram__ApiHash=${TELEGRAM_API_HASH}
+      - Telegram__Channel=${TELEGRAM_CHANNEL}
+      - Telegram__PhoneNumber=${TELEGRAM_PHONE}
+      - Google__SpreadsheetId=${GOOGLE_SPREADSHEET_ID}
+      - Google__Range=${GOOGLE_RANGE}
+      - Google__CredentialsFilePath=/app/data/credentials.json
