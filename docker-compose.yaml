@@ -1,14 +1,11 @@
 ﻿services:
   api:
     build: .
-    entrypoint: ["/bin/sh", "-c", "chmod -R 777 /app/data && dotnet MissilePredictor.API.dll"]
     user: root
     ports:
       - "${PORT}:8080"
     volumes:
-      - ../files/data:/app/data
-      - ../files/credentials.json:/app/data/credentials.json
-      - ../files/tg.session:/app/data/tg.session
+      - missilepredictor_files:/app/data
     environment:
       - Telegram__ApiId=${TELEGRAM_API_ID}
       - Telegram__ApiHash=${TELEGRAM_API_HASH}
@@ -16,4 +13,8 @@
       - Telegram__PhoneNumber=${TELEGRAM_PHONE}
       - Google__SpreadsheetId=${GOOGLE_SPREADSHEET_ID}
       - Google__Range=${GOOGLE_RANGE}
-      - Google__CredentialsFilePath=/app/data/credentials.json  
+      - Google__CredentialsFilePath=/app/data/credentials.json
+
+volumes:
+  missilepredictor_files:
+    external: true
