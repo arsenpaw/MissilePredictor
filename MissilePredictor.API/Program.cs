@@ -52,14 +52,14 @@ builder.Services.AddHangfireServer();
 var app = builder.Build();
 
 
-if (app.Environment.IsDevelopment())
-{
-    app.UseSwagger();
-    app.UseSwaggerUI();
-}
+app.UseSwagger();
+app.UseSwaggerUI();
 
 app.UseHttpsRedirection();
-app.UseHangfireDashboard("/hangfire");  // ← dashboard at /hangfire
+app.UseHangfireDashboard("/hangfire", new DashboardOptions
+{
+    Authorization = new[] { new Hangfire.Dashboard.LocalRequestsOnlyAuthorizationFilter() }
+});
 
 RecurringJob.AddOrUpdate<SyncTelegramDatasToSheetsJob>(
     "sync-telegram",
