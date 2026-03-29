@@ -2,7 +2,7 @@
   api:
     build: .
     ports:
-      - "{PORT}:8080"
+      - "${PORT}:8080"
     volumes:
       - ./data:/app/data
     environment:
