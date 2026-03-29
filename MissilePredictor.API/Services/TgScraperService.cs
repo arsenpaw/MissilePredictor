@@ -33,7 +33,21 @@ public sealed class TgScraperService : IAsyncDisposable
         _state = new FileState<ScraperState>(_opt.LastIdPath);
     }
 
-    public async Task<IReadOnlyList<MessageDto>> GetUnreadMessagesAsync(CancellationToken ct = default)
+
+
+    public async Task<IReadOnlyList<MessageDto>> GetAndSaveUnreadMessagesAsync(CancellationToken ct = default)
+    {
+        var lastId = _state.Value.LastId;
+        var result =  await GetMessagesAsync(lastId, ct);
+    
+
+        if (result.Count > 0)
+            _state.Save(s => s.LastId = result.Max(m => m.Id));
+
+        return result;
+    }
+
+    public async Task<IReadOnlyList<MessageDto>> GetMessagesAsync(int minId , CancellationToken ct = default)
     {
         await EnsureLoginAsync(ct);
 
@@ -41,7 +55,6 @@ public sealed class TgScraperService : IAsyncDisposable
         if (uname.StartsWith("@")) uname = uname[1..];
 
         var peer     = await _client.Contacts_ResolveUsername(uname);
-        var lastId   = _state.Value.LastId;
         var result   = new List<MessageDto>();
         int offsetId = 0;                        // 0 = start from latest message
 
@@ -52,7 +65,7 @@ public sealed class TgScraperService : IAsyncDisposable
             var hist = await _client.Messages_GetHistory(
                 peer,
                 offset_id: offsetId,
-                min_id:    lastId,               // server filters out already-seen messages
+                min_id:    minId,               // server filters out already-seen messages
                 limit:     100);
 
             var batch = hist.Messages
@@ -78,14 +91,9 @@ public sealed class TgScraperService : IAsyncDisposable
             await Task.Delay(400, ct);
         }
 
-        result = result
+        return result
             .OrderBy(m => m.Id)
             .ToList();
-
-        if (result.Count > 0)
-            _state.Save(s => s.LastId = result.Max(m => m.Id));
-
-        return result;
     }
 
     private async Task EnsureLoginAsync(CancellationToken ct)

@@ -81,7 +81,7 @@ app.MapGet("/alerts", async (
     TgScraperService thSvc,
     ILogger<Program> logger) =>
 {
-    var messages = await thSvc.GetUnreadMessagesAsync();
+    var messages = await thSvc.GetAndSaveUnreadMessagesAsync();
     var predictionResponse = svc.PredictMany(messages.Select(x => x.Text));
 
     var concat = messages

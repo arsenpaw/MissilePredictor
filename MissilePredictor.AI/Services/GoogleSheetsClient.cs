@@ -50,4 +50,20 @@ public class GoogleSheetsClient
         appendRequest.ValueInputOption = SpreadsheetsResource.ValuesResource.AppendRequest.ValueInputOptionEnum.USERENTERED;
         await appendRequest.ExecuteAsync();
     }
+
+    public async Task<int> GetLastIdAsync(string spreadsheetId, string range)
+    {
+        var request = _service.Spreadsheets.Values.Get(spreadsheetId, range);
+        var response = await request.ExecuteAsync();
+        
+        if (response.Values != null && response.Values.Count > 0)
+        {
+            var lastRow = response.Values[response.Values.Count - 1];
+            if (lastRow.Count > 0 && int.TryParse(lastRow[0].ToString(), out int parsedId))
+            {
+                return parsedId;
+            }
+        }
+        return 0;
+    }
 }
