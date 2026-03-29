@@ -2,6 +2,7 @@ using System.Text.Encodings.Web;
 using System.Text.Json;
 using Hangfire;
 using Hangfire.Dashboard;
+using Hangfire.Console;
 using Microsoft.Extensions.ML;
 using MissilePredictor.AI.Models;
 using MissilePredictor.AI.Services;
@@ -10,6 +11,7 @@ using MissilePredictor.AI.Config;
 using MissilePredictor.Config;
 using MissilePredictor.Services;
 using MissilePredictor.API.Jobs;
+using MissilePredictor.Jobs;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -46,7 +48,9 @@ builder.Services.AddSingleton<GoogleSheetsClient>();
 builder.Services.AddSingleton<SentimentModelPipeline>();
 
 builder.Services.AddSingleton<PredictionDangerousMessageService>();
-builder.Services.AddHangfire(x => x.UseInMemoryStorage());
+builder.Services.AddHangfire(x => x
+    .UseInMemoryStorage()
+    .UseConsole());
 builder.Services.AddHangfireServer();
 
 
@@ -64,13 +68,14 @@ app.UseHangfireDashboard("/hangfire", new DashboardOptions
 
 RecurringJob.AddOrUpdate<SyncTelegramDatasToSheetsJob>(
     "sync-telegram",
-    job => job.Execute(),
+    job => job.Execute(null!),
     Cron.Daily(23));                   
 
 RecurringJob.AddOrUpdate<ModelTrainingJob>(
     "model-training",
-    job => job.Execute(),
+    job => job.Execute(null!),
     Cron.Daily(0));
+
 app.MapGet("/alerts", async (
     PredictionDangerousMessageService svc,
     TgScraperService thSvc,

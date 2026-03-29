@@ -8,6 +8,8 @@ using MissilePredictor.AI.Config;
 using MissilePredictor.AI.Models;
 using MissilePredictor.AI.Services;
 using MissilePredictor.Config;
+using Hangfire.Console;
+using Hangfire.Server;
 
 namespace MissilePredictor.AI.Training;
 
@@ -28,7 +30,7 @@ public class SentimentModelPipeline
         _trainer = new SentimentTrainer(_ml);
     }
 
-    public async Task<int> RunAsync()
+    public async Task<int> RunAsync(PerformContext context = null)
     {
         var modelDir = Path.GetDirectoryName(_mlConfig.ModelPath);
         if (!string.IsNullOrWhiteSpace(modelDir))
@@ -36,22 +38,29 @@ public class SentimentModelPipeline
             Directory.CreateDirectory(modelDir);
         }
 
+        context?.WriteLine("Downloading sheets data for training...");
         var rawData = await _sheetsClient.ReadDataAsync(_googleConfig.SpreadsheetId, _googleConfig.Range);
         
         if (rawData == null || rawData.Count == 0)
         {
             Console.WriteLine("No data found.");
+            context?.WriteLine("No data found.");
             return 0;
         }
+        
+        context?.WriteLine($"Found {rawData.Count} rows of data. Proceeding to Parse & Train.");
 
         var dataEnumerable = ParseSheetData(rawData);
 
         var (model, metrics, split) = _trainer.Train(dataEnumerable);
 
-        Console.WriteLine($"AUC={metrics.AreaUnderRocCurve:F3} Acc={metrics.Accuracy:F3} F1={metrics.F1Score:F3}");
+        var stats = $"AUC={metrics.AreaUnderRocCurve:F3} Acc={metrics.Accuracy:F3} F1={metrics.F1Score:F3}";
+        Console.WriteLine(stats);
+        context?.WriteLine($"Metrics recorded: {stats}");
 
         _ml.Model.Save(model, split.TrainSet.Schema, _mlConfig.ModelPath);
         Console.WriteLine($"Saved model → {_mlConfig.ModelPath}");
+        context?.WriteLine($"Saved model to {_mlConfig.ModelPath}");
         
         return rawData.Count;
     }
