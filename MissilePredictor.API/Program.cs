@@ -1,6 +1,7 @@
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using Hangfire;
+using Hangfire.Dashboard;
 using Microsoft.Extensions.ML;
 using MissilePredictor.AI.Models;
 using MissilePredictor.AI.Services;
@@ -58,7 +59,7 @@ app.UseSwaggerUI();
 app.UseHttpsRedirection();
 app.UseHangfireDashboard("/hangfire", new DashboardOptions
 {
-    Authorization = new[] { new Hangfire.Dashboard.LocalRequestsOnlyAuthorizationFilter() }
+    Authorization = Array.Empty<IDashboardAuthorizationFilter>()
 });
 
 RecurringJob.AddOrUpdate<SyncTelegramDatasToSheetsJob>(
