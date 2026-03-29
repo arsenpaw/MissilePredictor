@@ -1,6 +1,7 @@
 ﻿services:
   api:
     build: .
+    user: root
     ports:
       - "${PORT}:8080"
     volumes:
