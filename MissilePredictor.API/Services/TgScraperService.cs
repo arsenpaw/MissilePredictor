@@ -1,5 +1,7 @@
 ﻿using System.Text.Json;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using MissilePredictor.Jobs;
 using MissilePredictor.Config;
 using MissilePredictor.Models;
 using TL;
@@ -7,11 +9,17 @@ using WTelegram;
 
 namespace MissilePredictor.Services;
 
+public class ScraperState
+{
+    public int LastId { get; set; }
+}
+
 public sealed class TgScraperService : IAsyncDisposable
 {
     private readonly TelegramConfig _opt;
     private readonly Client _client;
     private readonly ILogger<TgScraperService> _logger;
+    private readonly FileState<ScraperState> _state;
 
     public TgScraperService(IOptions<TelegramConfig> opt,  ILogger<TgScraperService> logger)
     {
@@ -19,76 +27,92 @@ public sealed class TgScraperService : IAsyncDisposable
         var cwd = AppContext.BaseDirectory;
        _logger = logger;
         _client = new Client(Config);
-
+        
+        var dir = Path.GetDirectoryName(_opt.LastIdPath);
+        if (!string.IsNullOrWhiteSpace(dir)) Directory.CreateDirectory(dir);
+        _state = new FileState<ScraperState>(_opt.LastIdPath);
     }
 
-    public async Task<IReadOnlyList<MessageDto>> GetUnreadMessagesAsync(int limit = 10, CancellationToken ct = default)
+    public async Task<IReadOnlyList<MessageDto>> GetUnreadMessagesAsync(CancellationToken ct = default)
     {
         await EnsureLoginAsync(ct);
 
         var uname = _opt.Channel.Trim();
         if (uname.StartsWith("@")) uname = uname[1..];
 
-        var peer = await _client.Contacts_ResolveUsername(uname);
-        var hist = await _client.Messages_GetHistory(peer, limit: limit);
+        var peer     = await _client.Contacts_ResolveUsername(uname);
+        var lastId   = _state.Value.LastId;
+        var result   = new List<MessageDto>();
+        int offsetId = 0;                        // 0 = start from latest message
 
-        var messages = hist.Messages
-            .OfType<Message>()
-            .Where(m => m.message is not null)
-            .Select(m => new MessageDto
-            {
-                Id = m.id,
-                Date = m.Date,
-                Text = m.message!
-            })
+        while (true)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            var hist = await _client.Messages_GetHistory(
+                peer,
+                offset_id: offsetId,
+                min_id:    lastId,               // server filters out already-seen messages
+                limit:     100);
+
+            var batch = hist.Messages
+                .OfType<Message>()
+                .Where(m => m.message is not null)
+                .Select(m => new MessageDto
+                {
+                    Id   = m.id,
+                    Date = m.Date,
+                    Text = m.message!
+                })
+                .ToList();
+
+            if (batch.Count == 0)
+                break;
+
+            result.AddRange(batch);
+
+            if (batch.Count < 100)
+                break;                           // last page
+
+            offsetId = batch.Min(m => m.Id);    // go further back
+            await Task.Delay(400, ct);
+        }
+
+        result = result
             .OrderBy(m => m.Id)
             .ToList();
 
-        var lastId = ReadLastId();
-        var newOnes = messages.Where(m => m.Id > lastId).ToList();
+        if (result.Count > 0)
+            _state.Save(s => s.LastId = result.Max(m => m.Id));
 
-        if (newOnes.Count > 0)
-            SaveLastId(newOnes.Max(m => m.Id));
-
-        return newOnes;
+        return result;
     }
 
     private async Task EnsureLoginAsync(CancellationToken ct)
     {
-        var me = await _client.LoginUserIfNeeded();
+        var me = await _client.LoginUserIfNeeded(new CodeSettings()
+        {
+            
+        });
         if (me is null)
             throw new InvalidOperationException("Login required. Provide PhoneNumber/VerificationCode/Password in TelegramOptions for first run.");
     }
 
     private string? Config(string what) => what switch
     {
-        "api_hash" => _opt.ApiHash,
-        "api_id" => _opt.ApiId.ToString(),
-        "session_pathname" => _opt.SessionPath,
-        "phone_number" => _opt.PhoneNumber,
-        _ => null
+        "api_hash"          => _opt.ApiHash,
+        "api_id"            => _opt.ApiId.ToString(),
+        "session_pathname"  => _opt.SessionPath,
+        "phone_number"      => _opt.PhoneNumber,
+        "verification_code" => Prompt("Enter Telegram code: "),
+        "password"          => Prompt("Enter 2FA password: "),   // only called if 2FA enabled
+        _                   => null
     };
 
-    private long ReadLastId()
+    private static string? Prompt(string message)
     {
-        var path = _opt.LastIdPath;
-        if (!File.Exists(path)) return 0;
-        try
-        {
-            using var fs = File.OpenRead(path);
-            var doc = JsonSerializer.Deserialize<Dictionary<string, long>>(fs);
-            return doc is not null && doc.TryGetValue("msg", out var v) ? v : 0;
-        }
-        catch { return 0; }
-    }
-
-    private void SaveLastId(long id)
-    {
-        var path = _opt.LastIdPath;
-        var dir = Path.GetDirectoryName(path);
-        if (!string.IsNullOrWhiteSpace(dir)) Directory.CreateDirectory(dir);
-        var payload = new Dictionary<string, long> { ["msg"] = id };
-        File.WriteAllText(path, JsonSerializer.Serialize(payload));
+        Console.Write(message);
+        return Console.ReadLine();
     }
 
     public async ValueTask DisposeAsync()

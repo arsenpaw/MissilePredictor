@@ -1,10 +1,14 @@
 using System.Text.Encodings.Web;
 using System.Text.Json;
+using Hangfire;
 using Microsoft.Extensions.ML;
 using MissilePredictor.AI.Models;
 using MissilePredictor.AI.Services;
+using MissilePredictor.AI.Training;
+using MissilePredictor.AI.Config;
 using MissilePredictor.Config;
 using MissilePredictor.Services;
+using MissilePredictor.API.Jobs;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -12,18 +16,42 @@ var builder = WebApplication.CreateBuilder(args);
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
-var modelPath = builder.Configuration["ML:ModelPath"] ?? "models/sentiment.zip";
+
 builder.Services.AddScoped<TgScraperService>();
-builder.Services.Configure<TelegramConfig>(builder.Configuration.GetSection("Telegram"));
+builder.Services
+    .AddOptions<TelegramConfig>()
+    .Bind(builder.Configuration.GetSection("Telegram"))
+    .ValidateDataAnnotations()
+    .ValidateOnStart();
+
+builder.Services
+    .AddOptions<MlConfig>()
+    .Bind(builder.Configuration.GetSection("ML"))
+    .ValidateDataAnnotations()
+    .ValidateOnStart();
+
+builder.Services
+    .AddOptions<GoogleConfig>()
+    .Bind(builder.Configuration.GetSection("Google"))
+    .ValidateDataAnnotations()
+    .ValidateOnStart();
+
+var mlConfig = builder.Configuration.GetSection("ML").Get<MlConfig>() ?? new MlConfig();
 builder.Services
     .AddPredictionEnginePool<InputRow, SentimentPrediction>()
-    .FromFile(modelName: "sentiment", filePath: modelPath, watchForChanges: true);
+    .FromFile(modelName: "sentiment", filePath: mlConfig.ModelPath, watchForChanges: true);
+
+builder.Services.AddSingleton<GoogleSheetsClient>();
+builder.Services.AddSingleton<SentimentModelPipeline>();
 
 builder.Services.AddSingleton<PredictionDangerousMessageService>();
+builder.Services.AddHangfire(x => x.UseInMemoryStorage());
+builder.Services.AddHangfireServer();
+
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
+
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
@@ -31,7 +59,17 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+app.UseHangfireDashboard("/hangfire");  // ← dashboard at /hangfire
 
+RecurringJob.AddOrUpdate<SyncTelegramDatasToSheetsJob>(
+    "sync-telegram",
+    job => job.Execute(),
+    Cron.Daily(23));                   
+
+RecurringJob.AddOrUpdate<ModelTrainingJob>(
+    "model-training",
+    job => job.Execute(),
+    Cron.Daily(0));
 app.MapGet("/alerts", async (
     PredictionDangerousMessageService svc,
     TgScraperService thSvc,
@@ -40,11 +78,9 @@ app.MapGet("/alerts", async (
     var messages = await thSvc.GetUnreadMessagesAsync();
     var predictionResponse = svc.PredictMany(messages.Select(x => x.Text));
 
-
-
     var concat = messages
         .Zip(predictionResponse, (m, p) => new { m, p }).ToList();
-    logger.LogWarning("Prediction result: {prediction}", 
+    logger.LogWarning("Prediction result: {prediction}",
         JsonSerializer.Serialize(concat, new JsonSerializerOptions
         {
             WriteIndented = true,
