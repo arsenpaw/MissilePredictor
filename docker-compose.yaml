@@ -5,7 +5,7 @@
     ports:
       - "${PORT}:8080"
     volumes:
-      - missilepredictor_files:/app/data
+      - /home/arsen/missile-prefictor:/app/data
     environment:
       - Telegram__ApiId=${TELEGRAM_API_ID}
       - Telegram__ApiHash=${TELEGRAM_API_HASH}
@@ -14,7 +14,3 @@
       - Google__SpreadsheetId=${GOOGLE_SPREADSHEET_ID}
       - Google__Range=${GOOGLE_RANGE}
       - Google__CredentialsFilePath=/app/data/credentials.json
-
-volumes:
-  missilepredictor_files:
-    external: true
