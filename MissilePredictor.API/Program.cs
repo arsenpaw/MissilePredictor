@@ -12,6 +12,7 @@ using MissilePredictor.Config;
 using MissilePredictor.Services;
 using MissilePredictor.API.Jobs;
 using MissilePredictor.Jobs;
+using MissilePredictor.Models;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -76,12 +77,30 @@ RecurringJob.AddOrUpdate<ModelTrainingJob>(
     job => job.Execute(null!),
     Cron.Daily(0));
 
+app.MapGet("/fake", () =>
+{
+    FakeData.Messages.Add(new MessageDto
+    {
+        Id = Random.Shared.Next(),
+        Date = DateTime.UtcNow,
+        Text = "Увага! Ракетна небезпека! Негайно в укриття!" // fake dangerous message
+    });
+    return Results.Ok("Fake message added");
+});
+
 app.MapGet("/alerts", async (
     PredictionDangerousMessageService svc,
     TgScraperService thSvc,
     ILogger<Program> logger) =>
 {
-    var messages = await thSvc.GetAndSaveUnreadMessagesAsync();
+    var messages = (await thSvc.GetAndSaveUnreadMessagesAsync()).ToList();
+    
+    if (FakeData.Messages.Any())
+    {
+        messages.AddRange(FakeData.Messages);
+        FakeData.Messages.Clear();
+    }
+
     var predictionResponse = svc.PredictMany(messages.Select(x => x.Text));
 
     var concat = messages
@@ -99,3 +118,8 @@ app.MapGet("/alerts", async (
 });
 
 app.Run();
+
+public static class FakeData
+{
+    public static List<MessageDto> Messages { get; } = new();
+}
