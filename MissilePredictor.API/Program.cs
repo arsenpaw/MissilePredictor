@@ -99,6 +99,7 @@ app.MapGet("/alerts", async (
     {
         messages.AddRange(FakeData.Messages);
         FakeData.Messages.Clear();
+        return Results.Ok(messages.Select(x => new AlertMessageDto { Message = x.Text }));
     }
 
     var predictionResponse = svc.PredictMany(messages.Select(x => x.Text));
@@ -112,7 +113,7 @@ app.MapGet("/alerts", async (
             Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
         }));
     var dangerous = concat.Where(x => x.p.Prediction)
-        .Select(x => new { message = x.m.Text });
+        .Select(x => new AlertMessageDto { Message = x.m.Text });
 
     return Results.Ok(dangerous);
 });
@@ -123,3 +124,4 @@ public static class FakeData
 {
     public static List<MessageDto> Messages { get; } = new();
 }
+
