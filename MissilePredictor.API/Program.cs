@@ -77,17 +77,6 @@ RecurringJob.AddOrUpdate<ModelTrainingJob>(
     job => job.Execute(null!),
     Cron.Daily(0));
 
-app.MapGet("/fake", () =>
-{
-    FakeData.Messages.Add(new MessageDto
-    {
-        Id = Random.Shared.Next(),
-        Date = DateTime.UtcNow,
-        Text = "Увага! Ракетна небезпека! Негайно в укриття!" // fake dangerous message
-    });
-    return Results.Ok("Fake message added");
-});
-
 app.MapGet("/alerts", async (
     PredictionDangerousMessageService svc,
     TgScraperService thSvc,
@@ -95,13 +84,6 @@ app.MapGet("/alerts", async (
 {
     var messages = (await thSvc.GetAndSaveUnreadMessagesAsync()).ToList();
     
-    if (FakeData.Messages.Any())
-    {
-        messages.AddRange(FakeData.Messages);
-        FakeData.Messages.Clear();
-        return Results.Ok(messages.Select(x => new AlertMessageDto { Message = x.Text }));
-    }
-
     var predictionResponse = svc.PredictMany(messages.Select(x => x.Text));
 
     var concat = messages
@@ -119,9 +101,3 @@ app.MapGet("/alerts", async (
 });
 
 app.Run();
-
-public static class FakeData
-{
-    public static List<MessageDto> Messages { get; } = new();
-}
-
