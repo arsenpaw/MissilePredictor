@@ -1,33 +1,25 @@
-﻿using System;
+﻿using Hangfire.Console;
+using Hangfire.Server;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using MissilePredictor.AI.Config;
 using MissilePredictor.AI.Services;
 using MissilePredictor.AI.Training;
-using System.IO;
-using System.Threading.Tasks;
-using MissilePredictor.Jobs;
-using Hangfire.Console;
-using Hangfire.Server;
+using MissilePredictor.Config;
 
 namespace MissilePredictor.API.Jobs;
 
-public class TrainingJobState
-{
-    public int LastTrainedRowCount { get; set; } = -1;
-}
-
 public class ModelTrainingJob
 {
-    private readonly FileState<TrainingJobState> _state;
+    private readonly string _metaPath;
     private readonly SentimentModelPipeline _pipeline;
     private readonly GoogleSheetsClient _sheetsClient;
     private readonly GoogleConfig _googleConfig;
     private readonly ILogger<ModelTrainingJob> _logger;
 
-    public ModelTrainingJob(SentimentModelPipeline pipeline, GoogleSheetsClient sheetsClient, IOptions<GoogleConfig> googleConfig, ILogger<ModelTrainingJob> logger)
+    public ModelTrainingJob(SentimentModelPipeline pipeline, GoogleSheetsClient sheetsClient, IOptions<GoogleConfig> googleConfig, IOptions<MlConfig> mlConfig, ILogger<ModelTrainingJob> logger)
     {
-        _state = new FileState<TrainingJobState>(Path.Combine("data", "training_state.json"));
+        _metaPath = mlConfig.Value.ModelPath + ".meta";
         _pipeline = pipeline;
         _sheetsClient = sheetsClient;
         _googleConfig = googleConfig.Value;
@@ -38,13 +30,14 @@ public class ModelTrainingJob
     {
         _logger.LogInformation("Starting recurring model training check...");
         context.WriteLine("Starting recurring model training check...");
-        
+
         var rawData = await _sheetsClient.ReadDataAsync(_googleConfig.SpreadsheetId, _googleConfig.Range);
         int currentRowCount = rawData?.Count ?? 0;
-        
-        context.WriteLine($"Current row count in sheet: {currentRowCount} | Last trained count: {_state.Value.LastTrainedRowCount}");
+        int lastTrainedRowCount = File.Exists(_metaPath) && int.TryParse(File.ReadAllText(_metaPath), out var n) ? n : -1;
 
-        if (currentRowCount <= _state.Value.LastTrainedRowCount)
+        context.WriteLine($"Current row count in sheet: {currentRowCount} | Last trained count: {lastTrainedRowCount}");
+
+        if (currentRowCount <= lastTrainedRowCount)
         {
             _logger.LogInformation("Model training skipped: no new data.");
             context.WriteLine("Model training skipped: no new data.");
@@ -54,10 +47,10 @@ public class ModelTrainingJob
         context.WriteLine("New data found. Initiating ML Pipeline...");
 
         int trainedRows = await _pipeline.RunAsync(context);
-        
+
         if (trainedRows > 0)
         {
-            _state.Save(s => s.LastTrainedRowCount = currentRowCount);
+            File.WriteAllText(_metaPath, currentRowCount.ToString());
             _logger.LogInformation("Model training completed successfully due to new data.");
             context.WriteLine("Model training pipeline completed successfully.");
         }
