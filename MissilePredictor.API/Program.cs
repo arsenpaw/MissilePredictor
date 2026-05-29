@@ -21,7 +21,8 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
-builder.Services.AddScoped<TgScraperService>();
+builder.Services.AddSingleton<TgScraperService>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<TgScraperService>());
 builder.Services
     .AddOptions<TelegramConfig>()
     .Bind(builder.Configuration.GetSection("Telegram"))
@@ -77,12 +78,12 @@ RecurringJob.AddOrUpdate<ModelTrainingJob>(
     job => job.Execute(null!),
     Cron.Daily(0));
 
-app.MapGet("/alerts", async (
+app.MapGet("/alerts", (
     PredictionDangerousMessageService svc,
     TgScraperService thSvc,
     ILogger<Program> logger) =>
 {
-    var messages = (await thSvc.GetAndSaveUnreadMessagesAsync()).ToList();
+    var messages = thSvc.DrainNewMessages().ToList();
     
     var predictionResponse = svc.PredictMany(messages.Select(x => x.Text));
 
