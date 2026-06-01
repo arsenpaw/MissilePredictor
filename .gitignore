@@ -16,3 +16,4 @@ MissilePredictor.API/msg.json
 MissilePredictor.API/data/credentials.json
 MissilePredictor.API/data/training_state.json
 MissilePredictor.API/data/msg.json
+/.claude

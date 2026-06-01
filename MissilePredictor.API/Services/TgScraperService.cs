@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using MissilePredictor.AI.Services;
 using MissilePredictor.Config;
 using MissilePredictor.Models;
 using TL;
@@ -13,14 +14,20 @@ public sealed class TgScraperService : IHostedService, IAsyncDisposable
     private readonly TelegramConfig _opt;
     private readonly Client _client;
     private readonly ILogger<TgScraperService> _logger;
-    private readonly System.Threading.Channels.Channel<MessageDto> _incoming =
-        System.Threading.Channels.Channel.CreateUnbounded<MessageDto>();
+    private readonly PredictionDangerousMessageService _predictionService;
+    private readonly HomeAssistantClient _haClient;
     private long _targetChannelId;
 
-    public TgScraperService(IOptions<TelegramConfig> opt, ILogger<TgScraperService> logger)
+    public TgScraperService(
+        IOptions<TelegramConfig> opt,
+        ILogger<TgScraperService> logger,
+        PredictionDangerousMessageService predictionService,
+        HomeAssistantClient haClient)
     {
         _opt = opt.Value;
         _logger = logger;
+        _predictionService = predictionService;
+        _haClient = haClient;
         _client = new Client(Config);
     }
 
@@ -35,19 +42,7 @@ public sealed class TgScraperService : IHostedService, IAsyncDisposable
     public Task StopAsync(CancellationToken ct)
     {
         _client.OnUpdates -= HandleUpdateAsync;
-        _incoming.Writer.TryComplete();
         return Task.CompletedTask;
-    }
-
-    /// <summary>
-    /// Drains all buffered messages (startup replay + real-time pushes) since last call.
-    /// </summary>
-    public IReadOnlyList<MessageDto> DrainNewMessages()
-    {
-        var result = new List<MessageDto>();
-        while (_incoming.Reader.TryRead(out var msg))
-            result.Add(msg);
-        return result;
     }
 
     public async Task<IReadOnlyList<MessageDto>> GetMessagesAsync(int minId, CancellationToken ct = default)
@@ -102,8 +97,19 @@ public sealed class TgScraperService : IHostedService, IAsyncDisposable
             if (msg.peer_id is not PeerChannel ch || ch.channel_id != _targetChannelId) continue;
 
             var dto = new MessageDto { Id = msg.id, Date = msg.Date, Text = msg.message };
-            await _incoming.Writer.WriteAsync(dto);
-            _logger.LogInformation("Real-time message received #{Id}", dto.Id);
+
+            _logger.LogInformation(
+                "Telegram message received: Channel={Channel} MessageId={MessageId} Date={Date} Text={Text}",
+                _opt.Channel, dto.Id, dto.Date, dto.Text);
+
+            var prediction = _predictionService.Predict(dto.Text);
+            if (prediction.Prediction)
+            {
+                _logger.LogWarning(
+                    "Dangerous message detected, triggering Home Assistant: MessageId={MessageId} Probability={Probability:F4}",
+                    dto.Id, prediction.Probability);
+                await _haClient.TriggerAlertAutomationAsync([dto.Text]);
+            }
         }
     }
 

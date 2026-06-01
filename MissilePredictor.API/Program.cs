@@ -1,5 +1,3 @@
-using System.Text.Encodings.Web;
-using System.Text.Json;
 using Hangfire;
 using Hangfire.Dashboard;
 using Hangfire.Console;
@@ -13,8 +11,15 @@ using MissilePredictor.Services;
 using MissilePredictor.API.Jobs;
 using MissilePredictor.Jobs;
 using MissilePredictor.Models;
+using Serilog;
 
 var builder = WebApplication.CreateBuilder(args);
+
+builder.Host.UseSerilog((ctx, lc) => lc
+    .ReadFrom.Configuration(ctx.Configuration)
+    .Enrich.FromLogContext()
+    .Enrich.WithMachineName()
+    .Enrich.WithThreadId());
 
 // Add services to the container.
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
@@ -49,6 +54,14 @@ builder.Services
 builder.Services.AddSingleton<GoogleSheetsClient>();
 builder.Services.AddSingleton<SentimentModelPipeline>();
 
+builder.Services
+    .AddOptions<HomeAssistantConfig>()
+    .Bind(builder.Configuration.GetSection("HomeAssistant"))
+    .ValidateDataAnnotations()
+    .ValidateOnStart();
+
+builder.Services.AddSingleton<HomeAssistantClient>();
+
 builder.Services.AddSingleton<PredictionDangerousMessageService>();
 builder.Services.AddHangfire(x => x
     .UseInMemoryStorage()
@@ -77,28 +90,5 @@ RecurringJob.AddOrUpdate<ModelTrainingJob>(
     "model-training",
     job => job.Execute(null!),
     Cron.Daily(0));
-
-app.MapGet("/alerts", (
-    PredictionDangerousMessageService svc,
-    TgScraperService thSvc,
-    ILogger<Program> logger) =>
-{
-    var messages = thSvc.DrainNewMessages().ToList();
-    
-    var predictionResponse = svc.PredictMany(messages.Select(x => x.Text));
-
-    var concat = messages
-        .Zip(predictionResponse, (m, p) => new { m, p }).ToList();
-    logger.LogWarning("Prediction result: {prediction}",
-        JsonSerializer.Serialize(concat, new JsonSerializerOptions
-        {
-            WriteIndented = true,
-            Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
-        }));
-    var dangerous = concat.Where(x => x.p.Prediction)
-        .Select(x => new AlertMessageDto { Message = x.m.Text });
-
-    return Results.Ok(dangerous);
-});
 
 app.Run();
