@@ -14,3 +14,6 @@
       - Google__SpreadsheetId=${GOOGLE_SPREADSHEET_ID}
       - Google__Range=${GOOGLE_RANGE}
       - Google__CredentialsFilePath=/app/data/credentials.json
+      - HomeAssistant__BaseUrl=${HOMEASSISTANT_BASEURL}
+      - HomeAssistant__Token=${HOMEASSISTANT_TOKEN}
+      - HomeAssistant__WebhookId=${HOMEASSISTANT_WEBHOOKID}
