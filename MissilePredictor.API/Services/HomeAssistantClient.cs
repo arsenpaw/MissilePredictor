@@ -26,6 +26,13 @@ public sealed class HomeAssistantClient
         _http.BaseAddress = new Uri(_config.BaseUrl.TrimEnd('/') + "/");
         _http.DefaultRequestHeaders.Authorization =
             new AuthenticationHeaderValue("Bearer", _config.Token);
+
+        if (!string.IsNullOrWhiteSpace(_config.AccessClientId) &&
+            !string.IsNullOrWhiteSpace(_config.AccessClientSecret))
+        {
+            _http.DefaultRequestHeaders.Add("CF-Access-Client-Id", _config.AccessClientId);
+            _http.DefaultRequestHeaders.Add("CF-Access-Client-Secret", _config.AccessClientSecret);
+        }
     }
 
     public async Task TriggerAlertAutomationAsync(IEnumerable<string> alertMessages, CancellationToken ct = default)

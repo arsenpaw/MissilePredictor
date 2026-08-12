@@ -108,7 +108,17 @@ public sealed class TgScraperService : IHostedService, IAsyncDisposable
                 _logger.LogWarning(
                     "Dangerous message detected, triggering Home Assistant: MessageId={MessageId} Probability={Probability:F4}",
                     dto.Id, prediction.Probability);
-                await _haClient.TriggerAlertAutomationAsync([dto.Text]);
+
+                try
+                {
+                    await _haClient.TriggerAlertAutomationAsync([dto.Text]);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex,
+                        "Home Assistant alert failed: MessageId={MessageId}. Continuing with remaining updates.",
+                        dto.Id);
+                }
             }
         }
     }

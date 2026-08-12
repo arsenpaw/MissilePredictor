@@ -2,6 +2,12 @@
   api:
     build: .
     user: root
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     ports:
       - "${PORT}:8080"
     volumes:
@@ -17,3 +23,5 @@
       - HomeAssistant__BaseUrl=${HOMEASSISTANT_BASEURL}
       - HomeAssistant__Token=${HOMEASSISTANT_TOKEN}
       - HomeAssistant__WebhookId=${HOMEASSISTANT_WEBHOOKID}
+      - HomeAssistant__AccessClientId=${HOMEASSISTANT_CF_CLIENT_ID}
+      - HomeAssistant__AccessClientSecret=${HOMEASSISTANT_CF_CLIENT_SECRET}

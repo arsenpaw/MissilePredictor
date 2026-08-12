@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Net;
 using System.Text.Json;
 using Microsoft.Extensions.Configuration;
@@ -5,11 +6,16 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using MissilePredictor.Config;
 using MissilePredictor.Services;
+using Xunit.Abstractions;
 
 namespace MissilePredictor.Tests;
 
 public class HomeAssistantAlertTests
 {
+    private readonly ITestOutputHelper _output;
+
+    public HomeAssistantAlertTests(ITestOutputHelper output) => _output = output;
+
     /// <summary>
     /// Fires a mock air-raid alarm through <see cref="HomeAssistantClient"/> and asserts the
     /// Home Assistant webhook call looks exactly like what the automation subscribes to.
@@ -17,7 +23,6 @@ public class HomeAssistantAlertTests
     /// Settings come from the service's own appsettings.json (plus the Development/Production
     /// overrides and <c>HomeAssistant__*</c> environment variables, same as the running app).
     /// The request is intercepted by default, so the test is offline and deterministic; set
-    /// <c>HA_LIVE=1</c> to send the alarm to the configured Home Assistant for real.
     /// </summary>
     [Fact]
     public async Task MockAlarm_IsSentToHomeAssistantWebhook()
@@ -27,11 +32,22 @@ public class HomeAssistantAlertTests
         var haConfig = LoadHomeAssistantConfig();
         var config = Options.Create(haConfig);
 
-        using var handler = new CapturingHandler(new HttpClientHandler() );
+        _output.WriteLine($"BaseUrl={haConfig.BaseUrl}  WebhookId={haConfig.WebhookId}");
+        _output.WriteLine($"Token={(string.IsNullOrEmpty(haConfig.Token) ? "<empty>" : "set")}  " +
+                          $"CfAccessClientId={haConfig.AccessClientId ?? "<unset>"}  " +
+                          $"CfAccessClientSecret={(string.IsNullOrEmpty(haConfig.AccessClientSecret) ? "<unset>" : "set")}");
+
+        // No auto-redirect: Cloudflare Access answers an unauthenticated call with a 302 to its
+        // login page, and following it would turn an auth failure into a misleading 200.
+        using var handler = new CapturingHandler(new HttpClientHandler { AllowAutoRedirect = false });
         using var http = new HttpClient(handler);
         var client = new HomeAssistantClient(config, NullLogger<HomeAssistantClient>.Instance, http);
 
+        var started = Stopwatch.GetTimestamp();
         await client.TriggerAlertAutomationAsync([mockAlarm]);
+        var elapsed = Stopwatch.GetElapsedTime(started);
+
+        _output.WriteLine($"status={handler.StatusCode}  elapsed={elapsed.TotalMilliseconds:F0}ms");
 
         Assert.Equal(HttpMethod.Post, handler.Method);
         Assert.Equal(
@@ -74,7 +90,9 @@ public class HomeAssistantAlertTests
                 ?? throw new InvalidOperationException("HomeAssistant:BaseUrl is not configured."),
             Token = section["Token"] ?? string.Empty,
             WebhookId = section["WebhookId"]
-                ?? throw new InvalidOperationException("HomeAssistant:WebhookId is not configured.")
+                ?? throw new InvalidOperationException("HomeAssistant:WebhookId is not configured."),
+            AccessClientId = section["AccessClientId"],
+            AccessClientSecret = section["AccessClientSecret"]
         };
     }
 
