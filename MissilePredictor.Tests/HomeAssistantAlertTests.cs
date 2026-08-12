@@ -1,0 +1,120 @@
+using System.Net;
+using System.Text.Json;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
+using MissilePredictor.Config;
+using MissilePredictor.Services;
+
+namespace MissilePredictor.Tests;
+
+public class HomeAssistantAlertTests
+{
+    /// <summary>
+    /// Fires a mock air-raid alarm through <see cref="HomeAssistantClient"/> and asserts the
+    /// Home Assistant webhook call looks exactly like what the automation subscribes to.
+    ///
+    /// Settings come from the service's own appsettings.json (plus the Development/Production
+    /// overrides and <c>HomeAssistant__*</c> environment variables, same as the running app).
+    /// The request is intercepted by default, so the test is offline and deterministic; set
+    /// <c>HA_LIVE=1</c> to send the alarm to the configured Home Assistant for real.
+    /// </summary>
+    [Fact]
+    public async Task MockAlarm_IsSentToHomeAssistantWebhook()
+    {
+        const string mockAlarm = "🚀 Ракетна небезпека! Тестова тривога — MissilePredictor mock alarm.";
+
+        var haConfig = LoadHomeAssistantConfig();
+        var config = Options.Create(haConfig);
+
+        using var handler = new CapturingHandler(new HttpClientHandler() );
+        using var http = new HttpClient(handler);
+        var client = new HomeAssistantClient(config, NullLogger<HomeAssistantClient>.Instance, http);
+
+        await client.TriggerAlertAutomationAsync([mockAlarm]);
+
+        Assert.Equal(HttpMethod.Post, handler.Method);
+        Assert.Equal(
+            new Uri($"{haConfig.BaseUrl.TrimEnd('/')}/api/webhook/{haConfig.WebhookId}"),
+            handler.RequestUri);
+        Assert.Equal("Bearer", handler.AuthScheme);
+        Assert.Equal(haConfig.Token, handler.AuthParameter);
+        Assert.Equal("application/json", handler.ContentType);
+
+        var payload = JsonSerializer.Deserialize<AlertPayload>(
+            handler.Body!, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        Assert.NotNull(payload);
+        Assert.Equal(mockAlarm, Assert.Single(payload!.Messages));
+
+        Assert.True(
+            handler.StatusCode is >= HttpStatusCode.OK and < HttpStatusCode.Ambiguous,
+            $"Home Assistant webhook returned {handler.StatusCode}.");
+    }
+
+    /// <summary>
+    /// Binds the <c>HomeAssistant</c> section the same way Program.cs does, so the test uses
+    /// whatever the service itself would use on this machine.
+    /// </summary>
+    private static HomeAssistantConfig LoadHomeAssistantConfig()
+    {
+        var environment = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? "Development";
+
+        var configuration = new ConfigurationBuilder()
+            .SetBasePath(AppContext.BaseDirectory)
+            .AddJsonFile("appsettings.json", optional: false)
+            .AddJsonFile($"appsettings.{environment}.json", optional: true)
+            .AddEnvironmentVariables()
+            .Build();
+
+        var section = configuration.GetSection("HomeAssistant");
+
+        return new HomeAssistantConfig
+        {
+            BaseUrl = section["BaseUrl"]
+                ?? throw new InvalidOperationException("HomeAssistant:BaseUrl is not configured."),
+            Token = section["Token"] ?? string.Empty,
+            WebhookId = section["WebhookId"]
+                ?? throw new InvalidOperationException("HomeAssistant:WebhookId is not configured.")
+        };
+    }
+
+    private sealed record AlertPayload(IReadOnlyList<string> Messages);
+
+    /// <summary>
+    /// Records the outgoing request. With no inner handler it short-circuits with 200 OK
+    /// (mock mode); with one it forwards to the real Home Assistant and records the response.
+    /// </summary>
+    private sealed class CapturingHandler : DelegatingHandler
+    {
+        public CapturingHandler(HttpMessageHandler? inner)
+        {
+            if (inner is not null) InnerHandler = inner;
+        }
+
+        public HttpMethod? Method { get; private set; }
+        public Uri? RequestUri { get; private set; }
+        public string? AuthScheme { get; private set; }
+        public string? AuthParameter { get; private set; }
+        public string? ContentType { get; private set; }
+        public string? Body { get; private set; }
+        public HttpStatusCode? StatusCode { get; private set; }
+
+        protected override async Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            Method = request.Method;
+            RequestUri = request.RequestUri;
+            AuthScheme = request.Headers.Authorization?.Scheme;
+            AuthParameter = request.Headers.Authorization?.Parameter;
+            ContentType = request.Content?.Headers.ContentType?.MediaType;
+            Body = request.Content is null ? null : await request.Content.ReadAsStringAsync(cancellationToken);
+
+            var response = InnerHandler is null
+                ? new HttpResponseMessage(HttpStatusCode.OK) { RequestMessage = request }
+                : await base.SendAsync(request, cancellationToken);
+
+            StatusCode = response.StatusCode;
+            return response;
+        }
+    }
+}

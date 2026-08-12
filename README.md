@@ -27,23 +27,23 @@ Two recurring Hangfire jobs keep the loop closed:
 - **`sync-telegram`** (daily, 23:00) — reads the last synced message id from the sheet, pulls everything newer from the channel, scores it, and appends `id, date, text, danger` rows.
 - **`model-training`** (daily, 00:00) — compares the sheet's row count against `data/sentiment.zip.meta`; if there is new data it retrains, prints AUC / accuracy / F1, and saves the model. `PredictionEnginePool` watches the file and picks up the new model without a restart.
 
-## Features
+## What works today
 
-- **Real-time Telegram ingestion** — a hosted service stays logged in via [WTelegramClient](https://github.com/wiz0u/WTelegramClient) and handles `UpdateNewMessage` for the configured channel, so alerts are not tied to the nightly poll.
-- **Binary classification with ML.NET** — `FeaturizeText` over the raw Ukrainian message text into `SdcaLogisticRegression`, an 80/20 train/test split with a fixed seed, and AUC/accuracy/F1 logged on every training run.
-- **Google Sheets as dataset + labelling UI** — messages land in the sheet pre-labelled by the current model; correcting a cell is all it takes to teach the next model.
-- **Self-retraining** — nightly, incremental, and skipped entirely when no new rows arrived.
-- **Home Assistant integration** — dangerous messages `POST` to `api/webhook/{WebhookId}` with a `{ "messages": [...] }` body, which is what my automations subscribe to.
-- **Hot model reload** — new `sentiment.zip` is picked up in place.
-- **Hangfire dashboard** at `/hangfire` for triggering jobs by hand and reading their console output; Swagger UI at `/swagger`.
+Everything below runs unattended once the service is up.
 
-## Projects
+- ✅ **Real-time Telegram alerts** — stays logged in via [WTelegramClient](https://github.com/wiz0u/WTelegramClient) and reacts to each new post in the channel as it lands, not on a poll timer.
+- ✅ **Danger classification** — ML.NET binary classification (`FeaturizeText` → `SdcaLogisticRegression`) over the raw Ukrainian message text, with an 80/20 train/test split and AUC / accuracy / F1 logged on every training run.
+- ✅ **Home Assistant trigger** — dangerous messages `POST` to `api/webhook/{WebhookId}` as `{ "messages": [...] }`, which is what my automations subscribe to.
+- ✅ **Google Sheet as dataset and labelling UI** — messages arrive pre-labelled by the current model; fixing a cell is all it takes to teach the next one.
+- ✅ **Nightly self-retraining** — retrains only when the sheet has grown, and the running service swaps in the new `sentiment.zip` without a restart.
+- ✅ **Hangfire dashboard** at `/hangfire` — run either job by hand and read its console output.
 
-| Project | Contents |
-| --- | --- |
-| `MissilePredictor.AI` | ML.NET training pipeline and trainer, prediction service, Google Sheets client, ML/Google config |
-| `MissilePredictor.API` | ASP.NET Core host, Telegram scraper, Home Assistant client, Hangfire jobs |
-| `models/` | Exported model artifacts (`sentiment.zip`, `sentiment.onnx`) |
+## In development
+
+- 🚧 **HTTP API** — Swagger is wired up but there are no endpoints yet, so `/swagger` is currently empty. The intent is to expose scoring (`AlertMessageDto` is the placeholder request shape) so other tools can classify text without going through Telegram.
+- 🚧 **ONNX runtime scoring** — `models/sentiment.onnx` is exported but nothing loads it; scoring still runs through the ML.NET `.zip` model.
+- 🚧 **Configurable danger threshold** — `PredictionDangerousMessageService.IsDangerous` supports a threshold, but the alert path uses the model's default 0.5 decision. Making it a setting would let me trade false alarms against missed ones.
+- 🚧 **Unattended first start** — the initial Telegram login prompts for a code on stdin, so a cold start still needs a human.
 
 ## Configuration
 

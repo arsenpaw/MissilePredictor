@@ -13,11 +13,17 @@ public sealed class HomeAssistantClient
     private readonly ILogger<HomeAssistantClient> _logger;
 
     public HomeAssistantClient(IOptions<HomeAssistantConfig> config, ILogger<HomeAssistantClient> logger)
+        : this(config, logger, new HttpClient())
+    {
+    }
+
+    public HomeAssistantClient(IOptions<HomeAssistantConfig> config, ILogger<HomeAssistantClient> logger, HttpClient http)
     {
         _config = config.Value;
         _logger = logger;
 
-        _http = new HttpClient { BaseAddress = new Uri(_config.BaseUrl.TrimEnd('/') + "/") };
+        _http = http;
+        _http.BaseAddress = new Uri(_config.BaseUrl.TrimEnd('/') + "/");
         _http.DefaultRequestHeaders.Authorization =
             new AuthenticationHeaderValue("Bearer", _config.Token);
     }
