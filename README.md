@@ -22,10 +22,11 @@ The model is trained on messages from that channel: every message the scraper se
    SentimentModelPipeline ──► data/sentiment.zip  (hot-reloaded, no restart)
 ```
 
-Two recurring Hangfire jobs keep the loop closed:
+Three recurring Hangfire jobs keep the loop closed:
 
 - **`sync-telegram`** (daily, 23:00) — reads the last synced message id from the sheet, pulls everything newer from the channel, scores it, and appends `id, date, text, danger` rows.
 - **`model-training`** (daily, 00:00) — compares the sheet's row count against `data/sentiment.zip.meta`; if there is new data it retrains, prints AUC / accuracy / F1, and saves the model. `PredictionEnginePool` watches the file and picks up the new model without a restart.
+- **`restart-app`** (daily, 01:00) — waits for any still-running job to finish, then stops the app so Docker's `restart: unless-stopped` policy starts a fresh instance.
 
 ## What works today
 

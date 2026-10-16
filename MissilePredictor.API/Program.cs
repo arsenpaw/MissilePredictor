@@ -91,4 +91,10 @@ RecurringJob.AddOrUpdate<ModelTrainingJob>(
     job => job.Execute(null!),
     Cron.Daily(0));
 
+// Runs after the nightly sync and training; waits for any still-running job before exiting.
+RecurringJob.AddOrUpdate<RestartAppJob>(
+    "restart-app",
+    job => job.Execute(null!),
+    Cron.Daily(1));
+
 app.Run();
