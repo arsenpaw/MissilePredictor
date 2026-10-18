@@ -124,3 +124,6 @@ RecurringJob.AddOrUpdate<RestartAppJob>(
     Cron.Daily(1));
 
 app.Run();
+
+// Lets the integration tests boot the app with WebApplicationFactory<Program>.
+public partial class Program { }
