@@ -62,6 +62,15 @@ builder.Services
 
 builder.Services.AddSingleton<HomeAssistantClient>();
 
+builder.Services
+    .AddOptions<NeptunConfig>()
+    .Bind(builder.Configuration.GetSection("Neptun"))
+    .ValidateDataAnnotations()
+    .ValidateOnStart();
+
+builder.Services.AddSingleton(new AreaThreatTracker(Area.Lviv));
+builder.Services.AddHostedService<NeptunStreamService>();
+
 builder.Services.AddSingleton<PredictionDangerousMessageService>();
 builder.Services.AddHangfire(x => x
     .UseInMemoryStorage()
