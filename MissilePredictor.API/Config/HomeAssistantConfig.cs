@@ -20,4 +20,10 @@ public sealed class HomeAssistantConfig
     public string? AccessClientId { get; init; }
 
     public string? AccessClientSecret { get; init; }
+
+    /// <summary>
+    /// Use <c>ConsoleAlertClient</c>: alerts go to the console and the webhook is never called.
+    /// The other settings are then not required.
+    /// </summary>
+    public bool Mock { get; init; }
 }

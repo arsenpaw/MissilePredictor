@@ -26,13 +26,22 @@ builder.Host.UseSerilog((ctx, lc) => lc
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
-builder.Services.AddSingleton<TgScraperService>();
-builder.Services.AddHostedService(sp => sp.GetRequiredService<TgScraperService>());
-builder.Services
-    .AddOptions<TelegramConfig>()
-    .Bind(builder.Configuration.GetSection("Telegram"))
-    .ValidateDataAnnotations()
-    .ValidateOnStart();
+// Telegram:Mock (see appsettings.Mock.json) runs without a Telegram login or connection.
+if (builder.Configuration.GetValue<bool>("Telegram:Mock"))
+{
+    builder.Services.AddSingleton<ITgScraperService, MockTgScraperService>();
+}
+else
+{
+    builder.Services
+        .AddOptions<TelegramConfig>()
+        .Bind(builder.Configuration.GetSection("Telegram"))
+        .ValidateDataAnnotations()
+        .ValidateOnStart();
+
+    builder.Services.AddSingleton<ITgScraperService, TgScraperService>();
+}
+builder.Services.AddHostedService(sp => sp.GetRequiredService<ITgScraperService>());
 
 builder.Services
     .AddOptions<MlConfig>()
@@ -54,13 +63,21 @@ builder.Services
 builder.Services.AddSingleton<GoogleSheetsClient>();
 builder.Services.AddSingleton<SentimentModelPipeline>();
 
-builder.Services
-    .AddOptions<HomeAssistantConfig>()
-    .Bind(builder.Configuration.GetSection("HomeAssistant"))
-    .ValidateDataAnnotations()
-    .ValidateOnStart();
+// HomeAssistant:Mock writes alerts to the console instead of calling the webhook.
+if (builder.Configuration.GetValue<bool>("HomeAssistant:Mock"))
+{
+    builder.Services.AddSingleton<IAlertClient, ConsoleAlertClient>();
+}
+else
+{
+    builder.Services
+        .AddOptions<HomeAssistantConfig>()
+        .Bind(builder.Configuration.GetSection("HomeAssistant"))
+        .ValidateDataAnnotations()
+        .ValidateOnStart();
 
-builder.Services.AddSingleton<HomeAssistantClient>();
+    builder.Services.AddSingleton<IAlertClient, HomeAssistantClient>();
+}
 
 builder.Services
     .AddOptions<NeptunConfig>()

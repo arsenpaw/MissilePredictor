@@ -86,6 +86,22 @@ dotnet run --project MissilePredictor.API
 
 The **first run is interactive**: Telegram asks for the verification code (and 2FA password, if set) on stdin. After that the session file is reused, so run it attached the first time.
 
+### Mock mode
+
+To run without a Telegram account or a real Home Assistant, set either switch in `appsettings.Development.json` (or as `Telegram__Mock=true` / `HomeAssistant__Mock=true`):
+
+```json
+{
+  "Telegram": { "Mock": true },
+  "HomeAssistant": { "Mock": true }
+}
+```
+
+- `Telegram:Mock` — `MockTgScraperService` replaces the scraper: no login, no connection, no channel messages, and an empty history for the sync job. The other `Telegram` settings are not needed.
+- `HomeAssistant:Mock` — `ConsoleAlertClient` replaces the webhook: alerts are logged as `MOCK alert (Home Assistant not called): …`. The other `HomeAssistant` settings are not needed.
+
+The NEPTUN stream still runs for real, so Lviv alerts show up in the console.
+
 ## Home Assistant side
 
 Create an automation with a webhook trigger whose id matches `HomeAssistant__WebhookId`:

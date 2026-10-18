@@ -9,25 +9,25 @@ using WTelegram;
 
 namespace MissilePredictor.Services;
 
-public sealed class TgScraperService : IHostedService, IAsyncDisposable
+public sealed class TgScraperService : ITgScraperService, IAsyncDisposable
 {
     private readonly TelegramConfig _opt;
     private readonly Client _client;
     private readonly ILogger<TgScraperService> _logger;
     private readonly PredictionDangerousMessageService _predictionService;
-    private readonly HomeAssistantClient _haClient;
+    private readonly IAlertClient _alertClient;
     private long _targetChannelId;
 
     public TgScraperService(
         IOptions<TelegramConfig> opt,
         ILogger<TgScraperService> logger,
         PredictionDangerousMessageService predictionService,
-        HomeAssistantClient haClient)
+        IAlertClient alertClient)
     {
         _opt = opt.Value;
         _logger = logger;
         _predictionService = predictionService;
-        _haClient = haClient;
+        _alertClient = alertClient;
         _client = new Client(Config);
     }
 
@@ -111,7 +111,7 @@ public sealed class TgScraperService : IHostedService, IAsyncDisposable
 
                 try
                 {
-                    await _haClient.TriggerAlertAutomationAsync([dto.Text]);
+                    await _alertClient.TriggerAlertAutomationAsync([dto.Text]);
                 }
                 catch (Exception ex)
                 {

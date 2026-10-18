@@ -22,19 +22,19 @@ public sealed class NeptunStreamService : BackgroundService
 
     private readonly NeptunConfig _config;
     private readonly AreaThreatTracker _tracker;
-    private readonly HomeAssistantClient _haClient;
+    private readonly IAlertClient _alertClient;
     private readonly ILogger<NeptunStreamService> _logger;
     private TimeSpan _backoff = InitialBackoff;
 
     public NeptunStreamService(
         IOptions<NeptunConfig> config,
         AreaThreatTracker tracker,
-        HomeAssistantClient haClient,
+        IAlertClient alertClient,
         ILogger<NeptunStreamService> logger)
     {
         _config = config.Value;
         _tracker = tracker;
-        _haClient = haClient;
+        _alertClient = alertClient;
         _logger = logger;
     }
 
@@ -111,7 +111,7 @@ public sealed class NeptunStreamService : BackgroundService
                 "snapshot" => _tracker.ApplySnapshot(
                     envelope.Data.Deserialize<NeptunSnapshot>(JsonOptions)?.Threats ?? []),
                 "upsert" when envelope.Data.Deserialize<NeptunThreat>(JsonOptions) is { } threat
-                    => _tracker.Upsert(threat) ? [threat] : [],
+                    => _tracker.TryEnter(threat) ? [threat] : [],
                 "remove" when envelope.Data.Deserialize<NeptunRemove>(JsonOptions) is { } removed
                     => RemoveThreat(removed.Id),
                 _ => []
@@ -128,14 +128,14 @@ public sealed class NeptunStreamService : BackgroundService
         foreach (var threat in entered)
         {
             _logger.LogWarning(
-                "Target entered '{Area}', triggering Home Assistant: Id={Id} Type={Type} Title={Title} Lat={Lat} Lon={Lon} DistanceKm={Distance:F1}",
+                "Target entered '{Area}', sending alert: Id={Id} Type={Type} Title={Title} Lat={Lat} Lon={Lon} DistanceKm={Distance:F1}",
                 _tracker.Area.Title, threat.Id, threat.Type, threat.Title, threat.Lat, threat.Lon,
                 _tracker.Area.DistanceKm(threat.Lat, threat.Lon));
         }
 
         try
         {
-            await _haClient.TriggerAlertAutomationAsync(entered.Select(FormatAlert), ct);
+            await _alertClient.TriggerAlertAutomationAsync(entered.Select(FormatAlert), ct);
         }
         catch (Exception ex)
         {
@@ -152,7 +152,7 @@ public sealed class NeptunStreamService : BackgroundService
     private string FormatAlert(NeptunThreat threat)
     {
         var distance = _tracker.Area.DistanceKm(threat.Lat, threat.Lon);
-        var alert = $"🚨 {threat.Title} — {_tracker.Area.Title}, {distance:F0} км від центру.";
+        var alert = $"🚨 {threat.Title} — {_tracker.Area.Title}, {distance:F0} км від Львову.";
         return string.IsNullOrWhiteSpace(threat.ExplanationShort) ? alert : $"{alert} {threat.ExplanationShort}";
     }
 }

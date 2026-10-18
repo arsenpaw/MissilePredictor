@@ -9,5 +9,8 @@ public sealed class TelegramConfig
 
     public string? PhoneNumber { get; init; }               
     public string? VerificationCode { get; init; }          
-    public string? Password { get; init; }                  
+    public string? Password { get; init; }
+
+    /// <summary>Use <c>MockTgScraperService</c>: no login, no Telegram connection.</summary>
+    public bool Mock { get; init; }
 }

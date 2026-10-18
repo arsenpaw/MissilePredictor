@@ -10,14 +10,14 @@ namespace MissilePredictor.Jobs;
 
 public class SyncTelegramDatasToSheetsJob
 {
-    private readonly TgScraperService _scraperService;
+    private readonly ITgScraperService _scraperService;
     private readonly GoogleSheetsClient _sheetsClient;
     private readonly GoogleConfig _googleConfig;
     private readonly PredictionDangerousMessageService _predictionService;
     private readonly ILogger<SyncTelegramDatasToSheetsJob> _logger;
 
     public SyncTelegramDatasToSheetsJob(
-        TgScraperService scraperService,
+        ITgScraperService scraperService,
         GoogleSheetsClient sheetsClient,
         IOptions<GoogleConfig> googleConfig,
         PredictionDangerousMessageService predictionService,

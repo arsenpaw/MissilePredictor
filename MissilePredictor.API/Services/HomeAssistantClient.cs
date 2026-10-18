@@ -6,7 +6,7 @@ using MissilePredictor.Config;
 
 namespace MissilePredictor.Services;
 
-public sealed class HomeAssistantClient
+public sealed class HomeAssistantClient : IAlertClient
 {
     private readonly HttpClient _http;
     private readonly HomeAssistantConfig _config;

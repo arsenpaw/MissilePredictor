@@ -25,11 +25,15 @@ public sealed class AreaThreatTracker
     {
         var list = threats.ToList();
         _inside.IntersectWith(list.Select(t => t.Id));
-        return list.Where(Upsert).ToList();
+        return list.Where(TryEnter).ToList();
     }
 
-    /// <summary>Returns true when this update moves the target into the area.</summary>
-    public bool Upsert(NeptunThreat threat)
+    /// <summary>
+    /// Checks a target update against the alert rules (real position, inside the area, active,
+    /// not advisory) and returns true only when it has just entered. A target outside the
+    /// area is forgotten, so it is reported again if it comes back.
+    /// </summary>
+    public bool TryEnter(NeptunThreat threat)
     {
         // No real position, so there is nothing to measure.
         if (threat.AreaOnly) return false;
