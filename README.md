@@ -48,7 +48,7 @@ Everything below runs unattended once the service is up.
 
 ## In development
 
-- 🚧 **HTTP API** — Swagger is wired up but there are no endpoints yet, so `/swagger` is currently empty. The intent is to expose scoring (`AlertMessageDto` is the placeholder request shape) so other tools can classify text without going through Telegram.
+- 🚧 **HTTP API** — Swagger is wired up but there are no endpoints yet, so `/swagger` is currently empty. The intent is to expose scoring so other tools can classify text without going through Telegram.
 - 🚧 **ONNX runtime scoring** — `models/sentiment.onnx` is exported but nothing loads it; scoring still runs through the ML.NET `.zip` model.
 - 🚧 **Configurable danger threshold** — `PredictionDangerousMessageService.IsDangerous` supports a threshold, but the alert path uses the model's default 0.5 decision. Making it a setting would let me trade false alarms against missed ones.
 - 🚧 **Unattended first start** — the initial Telegram login prompts for a code on stdin, so a cold start still needs a human.
@@ -65,7 +65,7 @@ Settings bind from `appsettings.json` or environment variables (double-underscor
 | `ML` | `ModelPath` (default `data/sentiment.zip`) |
 | `Neptun` | `StreamUrl` (default `wss://neptun.in.ua/api/v1/stream`) |
 
-The watched area is `Area.Lviv` in `Models/Area.cs`. Add another `Area` instance and pass it to `AreaThreatTracker` in `Program.cs` to watch somewhere else.
+The watched area is `Area.Lviv` in `src/MissilePredictor.API/Areas/Area.cs`. Add another `Area` instance and pass it to `AreaThreatTracker` in `Extensions/NeptunServiceCollectionExtensions.cs` to watch somewhere else.
 
 Get `ApiId` / `ApiHash` from [my.telegram.org](https://my.telegram.org). The Home Assistant token is a long-lived access token from your user profile. The Google service account needs edit access to the spreadsheet.
 
@@ -81,7 +81,7 @@ The compose file mounts a host directory at `/app/data` — that is where the Te
 Or locally:
 
 ```bash
-dotnet run --project MissilePredictor.API
+dotnet run --project src/MissilePredictor.API
 ```
 
 The **first run is interactive**: Telegram asks for the verification code (and 2FA password, if set) on stdin. After that the session file is reused, so run it attached the first time.
@@ -118,3 +118,12 @@ automation:
           title: "🚨 Ракетна небезпека"
           message: "{{ trigger.json.messages | join('\n') }}"
 ```
+
+## Tests
+
+```bash
+dotnet test tests/MissilePredictor.Tests              # offline unit tests (fake NEPTUN server, no network)
+dotnet test tests/MissilePredictor.IntegrationTests   # ⚠️ fires the REAL Home Assistant alarm
+```
+
+The integration tests boot the whole app and call the real webhook from your appsettings, so only run them on purpose. AI agents are blocked from running them (see `CLAUDE.md`).

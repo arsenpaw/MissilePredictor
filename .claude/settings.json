@@ -1,0 +1,17 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|mcp__rider__execute_run_configuration|mcp__rider__xdebug_start_debugger_session|mcp__rider__execute_terminal_command",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/block-integration-tests.sh",
+            "onFailure": "block",
+            "statusMessage": "Checking for integration test runs"
+          }
+        ]
+      }
+    ]
+  }
+}

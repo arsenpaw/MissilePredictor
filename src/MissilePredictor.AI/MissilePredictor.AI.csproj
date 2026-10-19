@@ -1,0 +1,19 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net8.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+    </PropertyGroup>
+
+    <ItemGroup>
+      <PackageReference Include="Google.Apis.Auth" Version="1.73.0" />
+      <PackageReference Include="Google.Apis.Sheets.v4" Version="1.73.0.4061" />
+      <PackageReference Include="Hangfire.Console" Version="1.4.3" />
+      <PackageReference Include="Hangfire.Core" Version="1.8.23" />
+      <PackageReference Include="Microsoft.Extensions.ML" Version="4.0.2" />
+      <PackageReference Include="Microsoft.ML" Version="4.0.2" />
+      <PackageReference Include="WTelegramClient" Version="4.3.8" />
+    </ItemGroup>
+
+</Project>
