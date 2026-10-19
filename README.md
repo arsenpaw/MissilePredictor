@@ -12,6 +12,12 @@ The model is trained on messages from that channel: every message the scraper se
         ▼
   TgScraperService ──► PredictionDangerousMessageService ──► Home Assistant webhook
         │                    (ML.NET model)                       (if dangerous)
+        │                                                               ▲
+        │   NEPTUN (wss://neptun.in.ua/api/v1/stream)                   │
+        │        │  snapshot / upsert / remove                          │
+        │        ▼                                                      │
+        │   NeptunStreamService ──► AreaThreatTracker ──────────────────┘
+        │                          (target entered Lviv area)
         │
         │  nightly 23:00 — SyncTelegramDatasToSheetsJob
         ▼
@@ -34,6 +40,7 @@ Everything below runs unattended once the service is up.
 
 - ✅ **Real-time Telegram alerts** — stays logged in via [WTelegramClient](https://github.com/wiz0u/WTelegramClient) and reacts to each new post in the channel as it lands, not on a poll timer.
 - ✅ **Danger classification** — ML.NET binary classification (`FeaturizeText` → `SdcaLogisticRegression`) over the raw Ukrainian message text, with an 80/20 train/test split and AUC / accuracy / F1 logged on every training run.
+- ✅ **NEPTUN live tracks** — `NeptunStreamService` holds a WebSocket to the [NEPTUN](https://neptun.in.ua) threat stream and fires the same webhook when a target's position comes within `Area.Lviv` (20 km of the city centre). Each track alerts once when it enters, and again only if it leaves and comes back. Advisory observations, region-only (`areaOnly`) reports, and stale or resolved tracks are ignored. The service reconnects with backoff and treats 60 s without a frame (heartbeats come every ~15 s) as a dead link. NEPTUN is an aggregator, not an official alert system ([terms](https://neptun.in.ua/api-terms)).
 - ✅ **Home Assistant trigger** — dangerous messages `POST` to `api/webhook/{WebhookId}` as `{ "messages": [...] }`, which is what my automations subscribe to.
 - ✅ **Google Sheet as dataset and labelling UI** — messages arrive pre-labelled by the current model; fixing a cell is all it takes to teach the next one.
 - ✅ **Nightly self-retraining** — retrains only when the sheet has grown, and the running service swaps in the new `sentiment.zip` without a restart.
@@ -41,7 +48,7 @@ Everything below runs unattended once the service is up.
 
 ## In development
 
-- 🚧 **HTTP API** — Swagger is wired up but there are no endpoints yet, so `/swagger` is currently empty. The intent is to expose scoring (`AlertMessageDto` is the placeholder request shape) so other tools can classify text without going through Telegram.
+- 🚧 **HTTP API** — Swagger is wired up but there are no endpoints yet, so `/swagger` is currently empty. The intent is to expose scoring so other tools can classify text without going through Telegram.
 - 🚧 **ONNX runtime scoring** — `models/sentiment.onnx` is exported but nothing loads it; scoring still runs through the ML.NET `.zip` model.
 - 🚧 **Configurable danger threshold** — `PredictionDangerousMessageService.IsDangerous` supports a threshold, but the alert path uses the model's default 0.5 decision. Making it a setting would let me trade false alarms against missed ones.
 - 🚧 **Unattended first start** — the initial Telegram login prompts for a code on stdin, so a cold start still needs a human.
@@ -56,6 +63,9 @@ Settings bind from `appsettings.json` or environment variables (double-underscor
 | `Google` | `SpreadsheetId`, `Range`, `CredentialsFilePath` (service account JSON) |
 | `HomeAssistant` | `BaseUrl`, `Token`, `WebhookId` (default `missile_predictor_alert`) |
 | `ML` | `ModelPath` (default `data/sentiment.zip`) |
+| `Neptun` | `StreamUrl` (default `wss://neptun.in.ua/api/v1/stream`) |
+
+The watched area is `Area.Lviv` in `src/MissilePredictor.API/Areas/Area.cs`. Add another `Area` instance and pass it to `AreaThreatTracker` in `Extensions/NeptunServiceCollectionExtensions.cs` to watch somewhere else.
 
 Get `ApiId` / `ApiHash` from [my.telegram.org](https://my.telegram.org). The Home Assistant token is a long-lived access token from your user profile. The Google service account needs edit access to the spreadsheet.
 
@@ -71,10 +81,26 @@ The compose file mounts a host directory at `/app/data` — that is where the Te
 Or locally:
 
 ```bash
-dotnet run --project MissilePredictor.API
+dotnet run --project src/MissilePredictor.API
 ```
 
 The **first run is interactive**: Telegram asks for the verification code (and 2FA password, if set) on stdin. After that the session file is reused, so run it attached the first time.
+
+### Mock mode
+
+To run without a Telegram account or a real Home Assistant, set either switch in `appsettings.Development.json` (or as `Telegram__Mock=true` / `HomeAssistant__Mock=true`):
+
+```json
+{
+  "Telegram": { "Mock": true },
+  "HomeAssistant": { "Mock": true }
+}
+```
+
+- `Telegram:Mock` — `MockTgScraperService` replaces the scraper: no login, no connection, no channel messages, and an empty history for the sync job. The other `Telegram` settings are not needed.
+- `HomeAssistant:Mock` — `ConsoleAlertClient` replaces the webhook: alerts are logged as `MOCK alert (Home Assistant not called): …`. The other `HomeAssistant` settings are not needed.
+
+The NEPTUN stream still runs for real, so Lviv alerts show up in the console.
 
 ## Home Assistant side
 
@@ -92,3 +118,12 @@ automation:
           title: "🚨 Ракетна небезпека"
           message: "{{ trigger.json.messages | join('\n') }}"
 ```
+
+## Tests
+
+```bash
+dotnet test tests/MissilePredictor.Tests              # offline unit tests (fake NEPTUN server, no network)
+dotnet test tests/MissilePredictor.IntegrationTests   # ⚠️ fires the REAL Home Assistant alarm
+```
+
+The integration tests boot the whole app and call the real webhook from your appsettings, so only run them on purpose. AI agents are blocked from running them (see `CLAUDE.md`).
