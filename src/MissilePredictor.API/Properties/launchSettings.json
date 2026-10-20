@@ -29,6 +29,18 @@
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
     },
+    "mock": {
+      "commandName": "Project",
+      "dotnetRunMessages": true,
+      "launchBrowser": true,
+      "launchUrl": "history",
+      "applicationUrl": "http://localhost:5102",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development",
+        "HomeAssistant__Mock": "true",
+        "TelegramAi__Enabled": "false"
+      }
+    },
     "IIS Express": {
       "commandName": "IISExpress",
       "launchBrowser": true,
