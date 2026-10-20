@@ -16,6 +16,7 @@ public static class HistoryServiceCollectionExtensions
             .Bind(configuration.GetSection("History"))
             .ValidateDataAnnotations()
             .ValidateOnStart();
+        services.AddSingleton<IValidateOptions<HistoryOptions>, HistoryOptionsValidator>();
 
         services.AddDbContextFactory<HistoryDbContext>((sp, builder) =>
             builder.UseSqlite(sp.GetRequiredService<IOptions<HistoryOptions>>().Value.ConnectionString));

@@ -67,7 +67,19 @@ Settings bind from `appsettings.json` or environment variables (double-underscor
 | `TelegramAi` | `Enabled` (default `true`), see below |
 | `History` | `ConnectionString` (default `Data Source=data/history.db`), `UnalertedTrackRetention` (default `06:00:00`) |
 
-Watched areas are configured under `Neptun:Areas` (default: Lviv, 10 km, in `appsettings.json`). Each entry needs `Title`, `Latitude`, `Longitude` and `RadiusKm`; `From` is the genitive form used in alert text ("км від Львову") and defaults to `Title`. Setting `Areas` in another config source adds to the list rather than replacing it, so edit `appsettings.json` to change the default.
+Watched areas are configured under `Neptun:Areas` (default: Lviv, 10 km, in `appsettings.json`). Each entry needs `Title`, `Latitude`, `Longitude` and `RadiusKm`; `From` is the genitive form used in alert text ("км від Львову") and defaults to `Title`.
+
+Other config sources (`appsettings.Production.json`, environment variables) merge into this list **by index**, field by field. To add an area, use index 1 or higher. Overriding index 0 changes Lviv's fields one at a time, and any field you leave out (including `From`) is kept from Lviv. To replace Lviv, restate entry 0 in full, `From` included; an override can change or add entries but never remove one. For example, to add Kyiv next to Lviv:
+
+```bash
+Neptun__Areas__1__Title=Київ
+Neptun__Areas__1__From=Києва
+Neptun__Areas__1__Latitude=50.4501
+Neptun__Areas__1__Longitude=30.5234
+Neptun__Areas__1__RadiusKm=15
+```
+
+The same list in `appsettings.json`:
 
 ```json
 "Neptun": {
@@ -80,15 +92,15 @@ Watched areas are configured under `Neptun:Areas` (default: Lviv, 10 km, in `app
 
 ### Kill switch: `TelegramAi__Enabled`
 
-Set `TelegramAi__Enabled=false` to run only the NEPTUN stream and Home Assistant alerts. It turns off the Telegram scraper, the ML model, Google Sheets and the nightly jobs (`sync-telegram`, `model-training`, `restart-app`), and their `Telegram`, `Google` and `ML` settings are then not required. The default `true` keeps everything running as before.
+Set `TelegramAi__Enabled=false` (`TELEGRAM_AI_ENABLED=false` in `.env`) to run only the NEPTUN stream and Home Assistant alerts. The value must be `true` or `false`; anything else fails startup. It turns off the Telegram scraper, the ML model, Google Sheets and the nightly jobs (`sync-telegram`, `model-training`, `restart-app`), and their `Telegram`, `Google` and `ML` settings are then not required. The default `true` keeps everything running as before.
 
 Get `ApiId` / `ApiHash` from [my.telegram.org](https://my.telegram.org). The Home Assistant token is a long-lived access token from your user profile. The Google service account needs edit access to the spreadsheet.
 
 ## History
 
-Every NEPTUN track that comes near a watched area is recorded to SQLite (`History__ConnectionString`, default `Data Source=data/history.db`), together with each alert decision and whether Home Assistant accepted it. Open `/history` for a filterable table of alerts and a Leaflet map: click a row or marker to draw that threat's track. The same data is available as JSON at `/api/history/alerts`, `/api/history/threats/{threatId}/track` and `/api/history/areas`.
+Every positioned NEPTUN target nationwide is recorded to SQLite (`History__ConnectionString`, default `Data Source=data/history.db`), together with each alert decision and whether Home Assistant accepted it. Open `/history` for a filterable table of alerts and a Leaflet map: click a row or marker to draw that threat's track. The same data is available as JSON at `/api/history/alerts`, `/api/history/threats/{threatId}/track` and `/api/history/areas`.
 
-Retention: alerts and the tracks behind them are kept forever. Tracks that never produced an alert are purged hourly (job `history-cleanup`) once they are older than `History__UnalertedTrackRetention` (default 6 hours). Like `/hangfire`, `/history` has no authentication.
+Retention: alerts and the tracks behind them are kept forever. Tracks of targets that never alerted are purged hourly (job `history-cleanup`) once they are older than `History__UnalertedTrackRetention` (default 6 hours, minimum 1 hour). The history is secondary: if the database cannot be opened at startup, the error is logged as critical and the NEPTUN stream and alerts run without it. The `/history` date filter uses Kyiv calendar days. Like `/hangfire`, `/history` has no authentication.
 
 ## Running
 

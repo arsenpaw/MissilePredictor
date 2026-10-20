@@ -1,5 +1,4 @@
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 namespace MissilePredictor.API.History;
 
@@ -29,8 +28,4 @@ public class HistoryDbContext(DbContextOptions<HistoryDbContext> options) : DbCo
             e.HasIndex(p => new { p.ThreatId, p.ReceivedAt });
         });
     }
-
-    private sealed class UtcDateTimeConverter() : ValueConverter<DateTime, DateTime>(
-        v => v.ToUniversalTime(),
-        v => DateTime.SpecifyKind(v, DateTimeKind.Utc));
 }

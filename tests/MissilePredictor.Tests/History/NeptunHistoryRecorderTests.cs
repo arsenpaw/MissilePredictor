@@ -78,4 +78,21 @@ public class NeptunHistoryRecorderTests
         Assert.False(alert.AlertSent);
         Assert.Equal("HA down", alert.Error);
     }
+
+    [Fact]
+    public void Recorder_ReplacesJsonNullStringsWithEmpty()
+    {
+        // One null from the stream must not fail the database batch it lands in (the columns are NOT NULL).
+        var recorder = new NeptunHistoryRecorder();
+        var threat = new NeptunThreat { Id = null!, Type = null!, Title = null!, Status = null!, Lat = InsideLat, Lon = InsideLon };
+
+        recorder.RecordPosition(threat);
+        recorder.RecordAlert(TestAreas.Lviv, threat, true, null);
+
+        var items = Drain(recorder);
+        var point = Assert.IsType<NeptunTrackPoint>(items[0]);
+        var alert = Assert.IsType<NeptunAlert>(items[1]);
+        Assert.Equal(("", "", "", ""), (point.ThreatId, point.Type, point.Title, point.Status));
+        Assert.Equal(("", "", ""), (alert.ThreatId, alert.Type, alert.Title));
+    }
 }

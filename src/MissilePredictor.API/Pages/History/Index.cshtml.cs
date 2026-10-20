@@ -27,8 +27,10 @@ public class IndexModel(HistoryQueries queries, IOptions<NeptunConfig> config) :
         Areas = config.Value.Areas;
         Types = await queries.GetThreatTypesAsync(ct);
 
-        // The date inputs pick whole days, so "to" includes the chosen day.
-        var filter = new AlertFilter(From, To?.AddDays(1), Area, Type, Math.Max(PageNumber, 1));
+        // The date inputs pick whole Kyiv days, so "to" includes the chosen day.
+        var from = From is { } f ? KyivTime.DayStartUtc(f) : (DateTime?)null;
+        var to = To is { } t ? KyivTime.DayStartUtc(t.AddDays(1)) : (DateTime?)null;
+        var filter = new AlertFilter(from, to, Area, Type, Math.Max(PageNumber, 1));
         Alerts = await queries.GetAlertsAsync(filter, ct);
     }
 }

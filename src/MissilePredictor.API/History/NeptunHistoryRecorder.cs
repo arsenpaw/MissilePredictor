@@ -21,18 +21,20 @@ public sealed class NeptunHistoryRecorder : INeptunHistoryRecorder
     {
         if (threat.AreaOnly) return;
 
-        var position = (threat.Lat, threat.Lon, threat.Status);
-        if (_lastPositions.TryGetValue(threat.Id, out var last) && last == position) return;
-        _lastPositions[threat.Id] = position;
+        // JSON nulls become "": the columns are NOT NULL and one bad row would drop its whole batch.
+        var threatId = threat.Id ?? "";
+        var position = (threat.Lat, threat.Lon, threat.Status ?? "");
+        if (_lastPositions.TryGetValue(threatId, out var last) && last == position) return;
+        _lastPositions[threatId] = position;
 
         _pending.Writer.TryWrite(new NeptunTrackPoint
         {
-            ThreatId = threat.Id,
+            ThreatId = threatId,
             ReceivedAt = DateTime.UtcNow,
             UpdatedAt = threat.UpdatedAt.UtcDateTime,
-            Type = threat.Type,
-            Title = threat.Title,
-            Status = threat.Status,
+            Type = threat.Type ?? "",
+            Title = threat.Title ?? "",
+            Status = threat.Status ?? "",
             Lat = threat.Lat,
             Lon = threat.Lon,
             Heading = threat.Heading
@@ -44,9 +46,9 @@ public sealed class NeptunHistoryRecorder : INeptunHistoryRecorder
         {
             OccurredAt = DateTime.UtcNow,
             AreaTitle = area.Title,
-            ThreatId = threat.Id,
-            Type = threat.Type,
-            Title = threat.Title,
+            ThreatId = threat.Id ?? "",
+            Type = threat.Type ?? "",
+            Title = threat.Title ?? "",
             Region = threat.Region,
             Locality = threat.Locality,
             Lat = threat.Lat,

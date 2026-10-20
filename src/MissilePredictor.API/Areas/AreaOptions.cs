@@ -8,7 +8,7 @@ public sealed class AreaOptions
     [Required]
     public string Title { get; init; } = "";
 
-    /// <summary>Genitive form used in alert text ("км від ..."); defaults to <see cref="Title"/>.</summary>
+    /// <summary>Genitive form used in alert text ("км від ..."); defaults to <see cref="Title"/> when blank.</summary>
     public string? From { get; init; }
 
     [Range(-90, 90)]
@@ -20,5 +20,5 @@ public sealed class AreaOptions
     [Range(0.1, 1000)]
     public double RadiusKm { get; init; }
 
-    public Area ToArea() => new(Title, Latitude, Longitude, RadiusKm, From ?? Title);
+    public Area ToArea() => new(Title, Latitude, Longitude, RadiusKm, string.IsNullOrWhiteSpace(From) ? Title : From);
 }

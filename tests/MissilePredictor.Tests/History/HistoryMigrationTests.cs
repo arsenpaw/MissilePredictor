@@ -1,8 +1,10 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using MissilePredictor.API.History;
 using MissilePredictor.TestKit.History;
+using MissilePredictor.TestKit.Logging;
 
 namespace MissilePredictor.Tests.History;
 
@@ -77,7 +79,7 @@ public class HistoryMigrationTests
         var root = Path.Combine(Path.GetTempPath(), $"history-{Guid.NewGuid():N}");
         var file = Path.Combine(root, "sub", "history.db");
         var options = new HistoryOptions { ConnectionString = $"Data Source={file}" };
-        var factory = new DbContextFactory(options);
+        var factory = new SqliteFileHistoryDb(options);
 
         try
         {
@@ -93,9 +95,46 @@ public class HistoryMigrationTests
         }
     }
 
-    private sealed class DbContextFactory(HistoryOptions options) : IDbContextFactory<HistoryDbContext>
+    [Fact]
+    public async Task Start_UnusableDatabase_LogsCriticalInsteadOfStoppingTheHost()
     {
-        public HistoryDbContext CreateDbContext() => new(
-            new DbContextOptionsBuilder<HistoryDbContext>().UseSqlite(options.ConnectionString).Options);
+        // A directory where the database file should be: SQLite cannot open it, like a corrupt or read-only volume.
+        var root = Path.Combine(Path.GetTempPath(), $"history-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        var options = new HistoryOptions { ConnectionString = $"Data Source={root}" };
+        var logger = new RecordingLogger<HistoryMigrationService>();
+
+        try
+        {
+            var service = new HistoryMigrationService(new SqliteFileHistoryDb(options), Options.Create(options), logger);
+
+            await service.StartAsync(CancellationToken.None);
+
+            var entry = Assert.Single(logger.Entries, e => e.Level == LogLevel.Critical);
+            Assert.NotNull(entry.Exception);
+        }
+        finally
+        {
+            Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+            Directory.Delete(root, true);
+        }
+    }
+
+    [Fact]
+    public async Task UnspecifiedKind_IsStoredAsUtcWithoutShifting()
+    {
+        using var history = new InMemoryHistoryDb();
+        var unspecified = new DateTime(2026, 10, 21, 1, 30, 0, DateTimeKind.Unspecified);
+
+        await using (var db = history.CreateDbContext())
+        {
+            db.Alerts.Add(new NeptunAlert { OccurredAt = unspecified, ThreatId = "t-1" });
+            await db.SaveChangesAsync();
+        }
+
+        await using var read = history.CreateDbContext();
+        var alert = await read.Alerts.SingleAsync();
+        Assert.Equal(DateTime.SpecifyKind(unspecified, DateTimeKind.Utc), alert.OccurredAt);
+        Assert.Equal(DateTimeKind.Utc, alert.OccurredAt.Kind);
     }
 }
