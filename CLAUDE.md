@@ -2,7 +2,9 @@
 
 ## Layout
 - `src/MissilePredictor.API` — ASP.NET Core host: Telegram scraper, Neptun stream, alerts, Hangfire jobs.
-  Feature folders (`Alerts`, `Areas`, `Neptun`, `Telegram`, `Jobs`), DI wiring in `Extensions/`.
+  Feature folders (`Alerts`, `Areas`, `Neptun`, `Telegram`, `Jobs`, `History`), DI wiring in `Extensions/`.
+  `History/` is the SQLite (EF Core) record of Neptun tracks and alerts plus its JSON API; `Pages/` holds the Razor
+  Pages UI (`/history` table + Leaflet map).
 - `src/MissilePredictor.AI` — ML.NET sentiment model (`Sentiment/`) and Google Sheets client (`GoogleSheets/`).
 - `tests/MissilePredictor.Tests` — offline unit/component tests.
 - `tests/MissilePredictor.TestKit` — shared fakes (fake Neptun WebSocket server, recording alert client).

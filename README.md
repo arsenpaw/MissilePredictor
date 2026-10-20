@@ -64,6 +64,8 @@ Settings bind from `appsettings.json` or environment variables (double-underscor
 | `HomeAssistant` | `BaseUrl`, `Token`, `WebhookId` (default `missile_predictor_alert`) |
 | `ML` | `ModelPath` (default `data/sentiment.zip`) |
 | `Neptun` | `StreamUrl` (default `wss://neptun.in.ua/api/v1/stream`), `Areas` (list, see below) |
+| `TelegramAi` | `Enabled` (default `true`), see below |
+| `History` | `ConnectionString` (default `Data Source=data/history.db`), `UnalertedTrackRetention` (default `06:00:00`) |
 
 Watched areas are configured under `Neptun:Areas` (default: Lviv, 10 km, in `appsettings.json`). Each entry needs `Title`, `Latitude`, `Longitude` and `RadiusKm`; `From` is the genitive form used in alert text ("км від Львову") and defaults to `Title`. Setting `Areas` in another config source adds to the list rather than replacing it, so edit `appsettings.json` to change the default.
 
@@ -76,7 +78,17 @@ Watched areas are configured under `Neptun:Areas` (default: Lviv, 10 km, in `app
 }
 ```
 
+### Kill switch: `TelegramAi__Enabled`
+
+Set `TelegramAi__Enabled=false` to run only the NEPTUN stream and Home Assistant alerts. It turns off the Telegram scraper, the ML model, Google Sheets and the nightly jobs (`sync-telegram`, `model-training`, `restart-app`), and their `Telegram`, `Google` and `ML` settings are then not required. The default `true` keeps everything running as before.
+
 Get `ApiId` / `ApiHash` from [my.telegram.org](https://my.telegram.org). The Home Assistant token is a long-lived access token from your user profile. The Google service account needs edit access to the spreadsheet.
+
+## History
+
+Every NEPTUN track that comes near a watched area is recorded to SQLite (`History__ConnectionString`, default `Data Source=data/history.db`), together with each alert decision and whether Home Assistant accepted it. Open `/history` for a filterable table of alerts and a Leaflet map: click a row or marker to draw that threat's track. The same data is available as JSON at `/api/history/alerts`, `/api/history/threats/{threatId}/track` and `/api/history/areas`.
+
+Retention: alerts and the tracks behind them are kept forever. Tracks that never produced an alert are purged hourly (job `history-cleanup`) once they are older than `History__UnalertedTrackRetention` (default 6 hours). Like `/hangfire`, `/history` has no authentication.
 
 ## Running
 

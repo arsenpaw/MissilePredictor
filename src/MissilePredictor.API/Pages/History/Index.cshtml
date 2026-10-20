@@ -1,0 +1,133 @@
+@page "/history"
+@using System.Text.Json
+@model MissilePredictor.API.Pages.History.IndexModel
+@{
+    Layout = null;
+    var mapData = new
+    {
+        areas = Model.Areas,
+        alerts = Model.Alerts.Items.Select(a => new { a.ThreatId, a.Title, a.AreaTitle, a.Lat, a.Lon })
+    };
+}
+<!doctype html>
+<html lang="uk">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Історія тривог</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+    <style>
+        body { font-family: system-ui, sans-serif; margin: 1rem; }
+        form { display: flex; flex-wrap: wrap; gap: .5rem; align-items: end; margin-bottom: 1rem; }
+        label { display: flex; flex-direction: column; font-size: .8rem; }
+        #map { height: 360px; margin-bottom: 1rem; }
+        table { border-collapse: collapse; width: 100%; font-size: .9rem; }
+        th, td { border-bottom: 1px solid #ddd; padding: .35rem .5rem; text-align: left; }
+        tbody tr[data-threat] { cursor: pointer; }
+        tbody tr[data-threat]:hover { background: #f3f6fb; }
+        .pager { margin-top: 1rem; display: flex; gap: 1rem; align-items: center; }
+    </style>
+</head>
+<body>
+<h1>Історія тривог</h1>
+
+<form method="get">
+    <label>Від <input type="date" name="From" value="@Model.From?.ToString("yyyy-MM-dd")"></label>
+    <label>До <input type="date" name="To" value="@Model.To?.ToString("yyyy-MM-dd")"></label>
+    <label>Зона
+        <select name="Area">
+            <option value="">Усі</option>
+            @foreach (var area in Model.Areas)
+            {
+                <option value="@area.Title" selected="@(area.Title == Model.Area)">@area.Title</option>
+            }
+        </select>
+    </label>
+    <label>Тип
+        <select name="Type">
+            <option value="">Усі</option>
+            @foreach (var type in Model.Types)
+            {
+                <option value="@type" selected="@(type == Model.Type)">@type</option>
+            }
+        </select>
+    </label>
+    <button type="submit">Фільтрувати</button>
+</form>
+
+<div id="map"></div>
+
+@if (Model.Alerts.Items.Count == 0)
+{
+    <p>Ще немає тривог.</p>
+}
+else
+{
+    <table>
+        <thead>
+        <tr>
+            <th>Час</th><th>Зона</th><th>Тип</th><th>Назва</th><th>Область / населений пункт</th>
+            <th>км</th><th>Пояснення</th><th>HA</th>
+        </tr>
+        </thead>
+        <tbody>
+        @foreach (var a in Model.Alerts.Items)
+        {
+            <tr data-threat="@a.ThreatId">
+                <td><time datetime="@a.OccurredAt.ToString("o")">@a.OccurredAt.ToString("o")</time></td>
+                <td>@a.AreaTitle</td>
+                <td>@a.Type</td>
+                <td>@a.Title</td>
+                <td>@a.Region @a.Locality</td>
+                <td>@a.DistanceKm.ToString("F1")</td>
+                <td>@a.ExplanationShort</td>
+                <td title="@a.Error">@(a.AlertSent ? "✓" : "✗")</td>
+            </tr>
+        }
+        </tbody>
+    </table>
+
+    <div class="pager">
+        @if (Model.HasPrevious)
+        {
+            <a asp-page="/History/Index" asp-all-route-data="@(new Dictionary<string, string?> { ["From"] = Model.From?.ToString("yyyy-MM-dd"), ["To"] = Model.To?.ToString("yyyy-MM-dd"), ["Area"] = Model.Area, ["Type"] = Model.Type, ["PageNumber"] = (Model.Alerts.Page - 1).ToString() })">&larr; Назад</a>
+        }
+        <span>Сторінка @Model.Alerts.Page, усього @Model.Alerts.Total</span>
+        @if (Model.HasNext)
+        {
+            <a asp-page="/History/Index" asp-all-route-data="@(new Dictionary<string, string?> { ["From"] = Model.From?.ToString("yyyy-MM-dd"), ["To"] = Model.To?.ToString("yyyy-MM-dd"), ["Area"] = Model.Area, ["Type"] = Model.Type, ["PageNumber"] = (Model.Alerts.Page + 1).ToString() })">Далі &rarr;</a>
+        }
+    </div>
+}
+
+<script type="application/json" id="map-data">@Html.Raw(JsonSerializer.Serialize(mapData, new JsonSerializerOptions(JsonSerializerDefaults.Web)))</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+    const data = JSON.parse(document.getElementById('map-data').textContent);
+    const map = L.map('map').setView([49.0, 31.0], 6);
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap' }).addTo(map);
+
+    const areaCircles = data.areas.map(a =>
+        L.circle([a.latitude, a.longitude], { radius: a.radiusKm * 1000, color: '#c0392b' }).bindTooltip(a.title).addTo(map));
+    if (areaCircles.length) map.fitBounds(L.featureGroup(areaCircles).getBounds());
+
+    let trackLine = null;
+    async function showTrack(threatId) {
+        const response = await fetch(`/api/history/threats/${encodeURIComponent(threatId)}/track`);
+        const points = (await response.json()).map(p => [p.lat, p.lon]);
+        if (trackLine) trackLine.remove();
+        if (!points.length) return;
+        trackLine = L.polyline(points, { color: '#2563eb' }).addTo(map);
+        map.fitBounds(trackLine.getBounds());
+    }
+
+    data.alerts.forEach(a =>
+        L.marker([a.lat, a.lon]).bindTooltip(`${a.title} — ${a.areaTitle}`).on('click', () => showTrack(a.threatId)).addTo(map));
+
+    document.querySelectorAll('tr[data-threat]').forEach(row =>
+        row.addEventListener('click', () => showTrack(row.dataset.threat)));
+    document.querySelectorAll('time[datetime]').forEach(t =>
+        t.textContent = new Date(t.getAttribute('datetime') + 'Z').toLocaleString('uk-UA'));
+</script>
+</body>
+</html>

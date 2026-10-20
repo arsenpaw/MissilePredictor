@@ -7,6 +7,7 @@ public static class HistoryWebApplicationExtensions
     public static WebApplication MapHistory(this WebApplication app)
     {
         app.MapHistoryApi();
+        app.MapRazorPages();
         return app;
     }
 }

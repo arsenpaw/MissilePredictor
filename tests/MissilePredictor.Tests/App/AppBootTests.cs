@@ -124,4 +124,39 @@ public class AppBootTests : IClassFixture<OfflineAppFixture>
         Assert.Contains(areas.EnumerateArray(), a =>
             a.GetProperty("title").GetString() == "Львів" && a.GetProperty("radiusKm").GetDouble() == 10);
     }
+
+    [Fact]
+    public async Task HistoryPage_WithNoData_RendersEmptyState()
+    {
+        Assert.IsType<ConsoleAlertClient>(_factory.Services.GetRequiredService<IAlertClient>());
+
+        var response = await _factory.CreateClient().GetAsync("/history?Type=__none__");
+
+        response.EnsureSuccessStatusCode();
+        var html = await response.Content.ReadAsStringAsync();
+        Assert.Contains("Ще немає тривог.", html);
+        Assert.Contains("leaflet", html);
+    }
+
+    [Fact]
+    public async Task HistoryPage_ShowsStoredAlert()
+    {
+        Assert.IsType<ConsoleAlertClient>(_factory.Services.GetRequiredService<IAlertClient>());
+
+        await _app.Neptun.SendAsync(Upsert(Threat("trk_page", InsideLat, InsideLon, "page-test")));
+
+        var client = _factory.CreateClient();
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        while (true)
+        {
+            var html = await client.GetStringAsync("/history", cts.Token);
+            if (html.Contains("page-test"))
+            {
+                Assert.Contains("Львів", html);
+                return;
+            }
+
+            await Task.Delay(50, cts.Token);
+        }
+    }
 }
