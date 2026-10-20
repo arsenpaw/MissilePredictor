@@ -1,5 +1,7 @@
+using System.Globalization;
 using System.Net.Http.Json;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Hangfire;
 using Hangfire.Storage;
 using Microsoft.Data.Sqlite;
@@ -150,9 +152,15 @@ public class AppBootTests : IClassFixture<OfflineAppFixture>
         while (true)
         {
             var html = await client.GetStringAsync("/history", cts.Token);
-            if (html.Contains("page-test"))
+            var row = Regex.Match(html, "<tr data-threat=\"trk_page\">.*?</tr>", RegexOptions.Singleline);
+            if (row.Success)
             {
-                Assert.Contains("Львів", html);
+                Assert.Contains("page-test", row.Value);
+                Assert.Contains("<td>Львів</td>", row.Value);
+                var time = Regex.Match(row.Value, "<time datetime=\"([^\"]+)\"").Groups[1].Value;
+                Assert.EndsWith("Z", time);
+                var parsed = DateTime.Parse(time, null, DateTimeStyles.RoundtripKind);
+                Assert.Equal(DateTimeKind.Utc, parsed.Kind);
                 return;
             }
 

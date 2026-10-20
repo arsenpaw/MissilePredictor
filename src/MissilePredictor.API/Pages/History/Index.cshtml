@@ -74,7 +74,7 @@ else
         @foreach (var a in Model.Alerts.Items)
         {
             <tr data-threat="@a.ThreatId">
-                <td><time datetime="@a.OccurredAt.ToString("o")">@a.OccurredAt.ToString("o")</time></td>
+                <td><time datetime="@a.OccurredAt.ToUniversalTime().ToString("o")">@a.OccurredAt.ToUniversalTime().ToString("o")</time></td>
                 <td>@a.AreaTitle</td>
                 <td>@a.Type</td>
                 <td>@a.Title</td>
@@ -107,14 +107,26 @@ else
     const map = L.map('map').setView([49.0, 31.0], 6);
     L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap' }).addTo(map);
 
+    // Tooltip content goes in as DOM text, never HTML: titles come from the untrusted stream.
+    function textNode(text) {
+        const span = document.createElement('span');
+        span.textContent = text;
+        return span;
+    }
+
     const areaCircles = data.areas.map(a =>
-        L.circle([a.latitude, a.longitude], { radius: a.radiusKm * 1000, color: '#c0392b' }).bindTooltip(a.title).addTo(map));
+        L.circle([a.latitude, a.longitude], { radius: a.radiusKm * 1000, color: '#c0392b' }).bindTooltip(textNode(a.title)).addTo(map));
     if (areaCircles.length) map.fitBounds(L.featureGroup(areaCircles).getBounds());
 
     let trackLine = null;
+    let latestRequest = 0;
     async function showTrack(threatId) {
+        const request = ++latestRequest;
         const response = await fetch(`/api/history/threats/${encodeURIComponent(threatId)}/track`);
-        const points = (await response.json()).map(p => [p.lat, p.lon]);
+        if (!response.ok) return;
+        const body = await response.json();
+        if (request !== latestRequest) return;
+        const points = body.map(p => [p.lat, p.lon]);
         if (trackLine) trackLine.remove();
         if (!points.length) return;
         trackLine = L.polyline(points, { color: '#2563eb' }).addTo(map);
@@ -122,12 +134,12 @@ else
     }
 
     data.alerts.forEach(a =>
-        L.marker([a.lat, a.lon]).bindTooltip(`${a.title} — ${a.areaTitle}`).on('click', () => showTrack(a.threatId)).addTo(map));
+        L.marker([a.lat, a.lon]).bindTooltip(textNode(`${a.title} — ${a.areaTitle}`)).on('click', () => showTrack(a.threatId)).addTo(map));
 
     document.querySelectorAll('tr[data-threat]').forEach(row =>
         row.addEventListener('click', () => showTrack(row.dataset.threat)));
     document.querySelectorAll('time[datetime]').forEach(t =>
-        t.textContent = new Date(t.getAttribute('datetime') + 'Z').toLocaleString('uk-UA'));
+        t.textContent = new Date(t.getAttribute('datetime')).toLocaleString('uk-UA'));
 </script>
 </body>
 </html>
