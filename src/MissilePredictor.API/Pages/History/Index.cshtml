@@ -1,8 +1,11 @@
 @page "/history"
+@using System.Globalization
 @using System.Text.Json
+@using MissilePredictor.API.History
 @model MissilePredictor.API.Pages.History.IndexModel
 @{
     Layout = null;
+    var uk = CultureInfo.GetCultureInfo("uk-UA");
     var mapData = new
     {
         areas = Model.Areas,
@@ -15,106 +18,296 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Історія тривог</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Unbounded:wght@500;700&display=swap">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
     <style>
-        body { font-family: system-ui, sans-serif; margin: 1rem; }
-        form { display: flex; flex-wrap: wrap; gap: .5rem; align-items: end; margin-bottom: 1rem; }
-        label { display: flex; flex-direction: column; font-size: .8rem; }
-        #map { height: 360px; margin-bottom: 1rem; }
-        table { border-collapse: collapse; width: 100%; font-size: .9rem; }
-        th, td { border-bottom: 1px solid #ddd; padding: .35rem .5rem; text-align: left; }
-        tbody tr[data-threat] { cursor: pointer; }
-        tbody tr[data-threat]:hover { background: #f3f6fb; }
-        .pager { margin-top: 1rem; display: flex; gap: 1rem; align-items: center; }
+        /* Civil-defence orange for areas and alerts, signal blue for the selected track. */
+        :root {
+            --paper: #f3f5f8;
+            --surface: #ffffff;
+            --ink: #13233f;
+            --muted: #5e6b7e;
+            --line: #dce2ea;
+            --orange: #e8730c;
+            --orange-soft: #fdf0e3;
+            --blue: #2457d6;
+            --fail: #b42318;
+            --fail-soft: #fdecea;
+            --ok: #1d7a46;
+            --display: "Unbounded", "Manrope", system-ui, sans-serif;
+            --body: "Manrope", system-ui, -apple-system, "Segoe UI", sans-serif;
+            color-scheme: light;
+        }
+        @@media (prefers-color-scheme: dark) {
+            :root {
+                --paper: #0f1a2e;
+                --surface: #16233b;
+                --ink: #e7ecf3;
+                --muted: #9aa7ba;
+                --line: #263652;
+                --orange: #f59a3d;
+                --orange-soft: #33271c;
+                --blue: #7aa2ff;
+                --fail: #ff8a80;
+                --fail-soft: #3a1f25;
+                --ok: #6fd39b;
+                color-scheme: dark;
+            }
+        }
+
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            background: var(--paper);
+            color: var(--ink);
+            font: 15px/1.5 var(--body);
+            font-variant-numeric: tabular-nums;
+        }
+        a { color: var(--blue); }
+        :focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+
+        .wrap { max-width: 1240px; margin: 0 auto; padding-inline: 24px; }
+
+        header { padding-block: 28px 20px; }
+        .title { display: flex; align-items: center; gap: 14px; }
+        /* The international civil-defence sign: blue triangle on orange. */
+        .emblem { flex: none; width: 34px; height: 34px; background: var(--orange); display: grid; place-items: center; border-radius: 4px; }
+        .emblem::after { content: ""; width: 0; height: 0; border-left: 10px solid transparent; border-right: 10px solid transparent; border-bottom: 17px solid #1f3f9a; margin-top: -2px; }
+        h1 { font: 700 26px/1.1 var(--display); margin: 0; letter-spacing: -0.01em; }
+        .count { margin: 6px 0 0 48px; color: var(--muted); }
+
+        .filters { display: flex; flex-wrap: wrap; gap: 10px 12px; align-items: end; margin-top: 20px; }
+        .filters label { display: grid; gap: 4px; font-size: 13px; font-weight: 600; color: var(--muted); }
+        .filters input, .filters select, .filters button {
+            font: 500 14px var(--body); color: var(--ink);
+            height: 38px; padding: 0 10px;
+            background: var(--surface); border: 1px solid var(--line); border-radius: 8px;
+        }
+        .filters button { background: var(--ink); color: var(--paper); border-color: var(--ink); padding: 0 18px; font-weight: 700; cursor: pointer; }
+        .filters .reset { align-self: center; margin-top: 18px; font-weight: 600; font-size: 14px; }
+
+        .map-shell { position: relative; border-block: 1px solid var(--line); }
+        #map { height: min(58vh, 560px); background: var(--line); }
+        .map-note {
+            position: absolute; left: 50%; bottom: 16px; transform: translateX(-50%); z-index: 500;
+            background: var(--ink); color: var(--paper); font-size: 13px; font-weight: 600;
+            padding: 6px 12px; border-radius: 6px; pointer-events: none;
+        }
+        .map-note[hidden] { display: none; }
+        .leaflet-container { font: 13px var(--body); }
+        /* Mute the busy OSM palette so the orange zones and blue track stand out. */
+        .leaflet-tile-pane { filter: saturate(0.35) contrast(0.95); }
+        @@media (prefers-color-scheme: dark) {
+            .leaflet-tile-pane { filter: invert(1) hue-rotate(180deg) saturate(0.3) brightness(0.9); }
+        }
+
+        main { padding-block: 12px 48px; }
+        table { width: 100%; border-collapse: collapse; }
+        thead th { font-size: 12px; font-weight: 600; color: var(--muted); text-align: left; padding: 0 12px 8px; }
+        thead th.num, td.num { text-align: right; }
+        tbody th {
+            text-align: left; padding: 26px 12px 8px;
+            font: 500 15px var(--display); color: var(--ink);
+        }
+        tbody th::first-letter { text-transform: uppercase; }
+        tbody tr[data-threat] { background: var(--surface); cursor: pointer; }
+        tbody tr[data-threat] td { padding: 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+        tbody tr[data-threat] td:first-child { box-shadow: inset 3px 0 0 transparent; }
+        tbody tr[data-threat]:hover { background: var(--orange-soft); }
+        tbody tr.is-selected { background: var(--orange-soft); }
+        tbody tr.is-selected td:first-child { box-shadow: inset 3px 0 0 var(--orange); }
+
+        td time { font-weight: 700; font-size: 16px; }
+        .area { color: var(--muted); }
+        .type { display: inline-block; font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 999px; background: var(--paper); border: 1px solid var(--line); white-space: nowrap; }
+        .name { font-weight: 600; }
+        .place { color: var(--muted); }
+        .why { color: var(--muted); max-width: 32ch; }
+        .dist { font-weight: 700; white-space: nowrap; }
+        .sent { font-size: 13px; font-weight: 700; white-space: nowrap; }
+        .sent.ok { color: var(--ok); }
+        .sent.failed { color: var(--fail); background: var(--fail-soft); padding: 2px 8px; border-radius: 4px; }
+
+        .empty { padding: 48px 0; }
+        .empty p { margin: 0; }
+        .empty .lead { font: 500 20px var(--display); }
+        .empty .hint { margin-top: 6px; color: var(--muted); }
+
+        .pager { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 24px; color: var(--muted); }
+        .pager a { font-weight: 700; text-decoration: none; }
+        .pager a:hover { text-decoration: underline; }
+
+        @@media (max-width: 760px) {
+            .wrap { padding-inline: 16px; }
+            h1 { font-size: 22px; }
+            .filters label { flex: 1 1 140px; }
+            .filters input, .filters select { width: 100%; }
+            #map { height: 46vh; }
+            thead { display: none; }
+            tbody th { padding-left: 0; }
+            tbody tr[data-threat] {
+                display: grid; grid-template-columns: auto 1fr auto; gap: 4px 12px;
+                grid-template-areas: "time name dist" "type place place" "why why sent";
+                padding: 12px; border-bottom: 1px solid var(--line);
+            }
+            tbody tr[data-threat] td { padding: 0; border: 0; }
+            tbody tr.is-selected { box-shadow: inset 3px 0 0 var(--orange); }
+            td:nth-child(1) { grid-area: time; }
+            td:nth-child(2) { display: none; }
+            td:nth-child(3) { grid-area: type; }
+            td:nth-child(4) { grid-area: name; }
+            td:nth-child(5) { grid-area: place; }
+            td:nth-child(6) { grid-area: dist; }
+            td:nth-child(7) { grid-area: why; max-width: none; }
+            td:nth-child(8) { grid-area: sent; align-self: end; }
+        }
     </style>
 </head>
 <body>
-<h1>Історія тривог</h1>
+<header class="wrap">
+    <div class="title">
+        <span class="emblem" aria-hidden="true"></span>
+        <h1>Історія тривог</h1>
+    </div>
+    <p class="count">@Model.Alerts.Total @IndexModel.AlertsWord(Model.Alerts.Total)@(Model.IsFiltered ? " за фільтрами" : "")</p>
 
-<form method="get">
-    <label>Від <input type="date" name="From" value="@Model.From?.ToString("yyyy-MM-dd")"></label>
-    <label>До <input type="date" name="To" value="@Model.To?.ToString("yyyy-MM-dd")"></label>
-    <label>Зона
-        <select name="Area">
-            <option value="">Усі</option>
-            @foreach (var area in Model.Areas)
-            {
-                <option value="@area.Title" selected="@(area.Title == Model.Area)">@area.Title</option>
-            }
-        </select>
-    </label>
-    <label>Тип
-        <select name="Type">
-            <option value="">Усі</option>
-            @foreach (var type in Model.Types)
-            {
-                <option value="@type" selected="@(type == Model.Type)">@type</option>
-            }
-        </select>
-    </label>
-    <button type="submit">Фільтрувати</button>
-</form>
+    <form method="get" class="filters">
+        <label>Від <input type="date" name="From" value="@Model.From?.ToString("yyyy-MM-dd")"></label>
+        <label>До <input type="date" name="To" value="@Model.To?.ToString("yyyy-MM-dd")"></label>
+        @if (Model.Areas.Count > 1)
+        {
+            <label>Зона
+                <select name="Area">
+                    <option value="">Усі</option>
+                    @foreach (var area in Model.Areas)
+                    {
+                        <option value="@area.Title" selected="@(area.Title == Model.Area)">@area.Title</option>
+                    }
+                </select>
+            </label>
+        }
+        <label>Тип
+            <select name="Type">
+                <option value="">Усі</option>
+                @foreach (var type in Model.Types)
+                {
+                    <option value="@type" selected="@(type == Model.Type)">@type</option>
+                }
+            </select>
+        </label>
+        <button type="submit">Показати</button>
+        @if (Model.IsFiltered)
+        {
+            <a class="reset" asp-page="/History/Index">Скинути фільтри</a>
+        }
+    </form>
+</header>
 
-<div id="map"></div>
+<div class="map-shell">
+    <div id="map" aria-label="Карта зон і місць тривог"></div>
+    <p class="map-note" id="map-note" hidden></p>
+</div>
 
+<main class="wrap">
 @if (Model.Alerts.Items.Count == 0)
 {
-    <p>Ще немає тривог.</p>
+    <div class="empty">
+        <p class="lead">Ще немає тривог.</p>
+        <p class="hint">@(Model.IsFiltered
+            ? "За цими фільтрами нічого не знайдено. Спробуйте ширший діапазон дат або інший тип."
+            : "Тут з'являтимуться цілі, що залетіли в зону, і чи спрацювала сирена.")</p>
+    </div>
 }
 else
 {
     <table>
         <thead>
         <tr>
-            <th>Час</th><th>Зона</th><th>Тип</th><th>Назва</th><th>Область / населений пункт</th>
-            <th>км</th><th>Пояснення</th><th>HA</th>
+            <th>Час</th><th>Зона</th><th>Тип</th><th>Ціль</th><th>Де</th>
+            <th class="num">Від центру</th><th>Пояснення</th><th>Сирена</th>
         </tr>
         </thead>
-        <tbody>
-        @foreach (var a in Model.Alerts.Items)
+        @foreach (var day in Model.Days)
         {
-            <tr data-threat="@a.ThreatId">
-                <td><time datetime="@a.OccurredAt.ToUniversalTime().ToString("o")">@a.OccurredAt.ToUniversalTime().ToString("o")</time></td>
-                <td>@a.AreaTitle</td>
-                <td>@a.Type</td>
-                <td>@a.Title</td>
-                <td>@a.Region @a.Locality</td>
-                <td>@a.DistanceKm.ToString("F1")</td>
-                <td>@a.ExplanationShort</td>
-                <td title="@a.Error">@(a.AlertSent ? "✓" : "✗")</td>
-            </tr>
+            <tbody>
+            <tr><th colspan="8" scope="colgroup">@day.Key.ToString("dddd, d MMMM", uk)</th></tr>
+            @foreach (var a in day)
+            {
+                var local = KyivTime.FromUtc(a.OccurredAt);
+                <tr data-threat="@a.ThreatId">
+                    <td><time datetime="@a.OccurredAt.ToUniversalTime().ToString("o")" title="@local.ToString("d MMMM yyyy, HH:mm:ss", uk)">@local.ToString("HH:mm")</time></td>
+                    <td>@a.AreaTitle</td>
+                    <td><span class="type">@a.Type</span></td>
+                    <td class="name">@a.Title</td>
+                    <td class="place">@string.Join(", ", new[] { a.Locality, a.Region }.Where(x => !string.IsNullOrWhiteSpace(x)))</td>
+                    <td class="num dist">@a.DistanceKm.ToString("0.0", uk) км</td>
+                    <td class="why">@a.ExplanationShort</td>
+                    <td>
+                        @if (a.AlertSent)
+                        {
+                            <span class="sent ok">Спрацювала</span>
+                        }
+                        else
+                        {
+                            <span class="sent failed" title="@a.Error">Не спрацювала</span>
+                        }
+                    </td>
+                </tr>
+            }
+            </tbody>
         }
-        </tbody>
     </table>
 
-    <div class="pager">
-        @if (Model.HasPrevious)
-        {
-            <a asp-page="/History/Index" asp-all-route-data="@(new Dictionary<string, string?> { ["From"] = Model.From?.ToString("yyyy-MM-dd"), ["To"] = Model.To?.ToString("yyyy-MM-dd"), ["Area"] = Model.Area, ["Type"] = Model.Type, ["PageNumber"] = (Model.Alerts.Page - 1).ToString() })">&larr; Назад</a>
-        }
-        <span>Сторінка @Model.Alerts.Page, усього @Model.Alerts.Total</span>
-        @if (Model.HasNext)
-        {
-            <a asp-page="/History/Index" asp-all-route-data="@(new Dictionary<string, string?> { ["From"] = Model.From?.ToString("yyyy-MM-dd"), ["To"] = Model.To?.ToString("yyyy-MM-dd"), ["Area"] = Model.Area, ["Type"] = Model.Type, ["PageNumber"] = (Model.Alerts.Page + 1).ToString() })">Далі &rarr;</a>
-        }
-    </div>
+    <nav class="pager" aria-label="Сторінки">
+        <span>
+            @if (Model.HasPrevious)
+            {
+                <a asp-page="/History/Index" asp-all-route-data="@Model.RouteFor(Model.Alerts.Page - 1)">&larr; Новіші</a>
+            }
+        </span>
+        <span>Сторінка @Model.Alerts.Page з @Math.Max(1, (Model.Alerts.Total + Model.Alerts.PageSize - 1) / Model.Alerts.PageSize)</span>
+        <span>
+            @if (Model.HasNext)
+            {
+                <a asp-page="/History/Index" asp-all-route-data="@Model.RouteFor(Model.Alerts.Page + 1)">Старіші &rarr;</a>
+            }
+        </span>
+    </nav>
 }
+</main>
 
 <script type="application/json" id="map-data">@Html.Raw(JsonSerializer.Serialize(mapData, new JsonSerializerOptions(JsonSerializerDefaults.Web)))</script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script>
     // Table first: it must work even when the Leaflet CDN is unreachable (offline home server).
-    document.querySelectorAll('time[datetime]').forEach(t =>
-        t.textContent = new Date(t.getAttribute('datetime')).toLocaleString('uk-UA'));
-
+    const rows = [...document.querySelectorAll('tr[data-threat]')];
     let showTrack = () => {};
-    document.querySelectorAll('tr[data-threat]').forEach(row =>
-        row.addEventListener('click', () => showTrack(row.dataset.threat)));
+
+    function select(threatId) {
+        rows.forEach(r => r.classList.toggle('is-selected', r.dataset.threat === threatId));
+        showTrack(threatId);
+    }
+
+    rows.forEach(row => {
+        row.tabIndex = 0;
+        row.addEventListener('click', () => select(row.dataset.threat));
+        row.addEventListener('keydown', e => {
+            if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); select(row.dataset.threat); }
+        });
+    });
 
     if (window.L) {
+        const css = getComputedStyle(document.documentElement);
+        const color = name => css.getPropertyValue(name).trim();
+        const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+        const note = document.getElementById('map-note');
+        const showNote = text => { note.textContent = text; note.hidden = !text; };
+
         const data = JSON.parse(document.getElementById('map-data').textContent);
-        const map = L.map('map').setView([49.0, 31.0], 6);
-        L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap' }).addTo(map);
+        const map = L.map('map', { zoomSnap: 0.5 }).setView([49.0, 31.0], 6);
+        L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap', maxZoom: 19 }).addTo(map);
 
         // Tooltip content goes in as DOM text, never HTML: titles come from the untrusted stream.
         function textNode(text) {
@@ -124,26 +317,42 @@ else
         }
 
         const areaCircles = data.areas.map(a =>
-            L.circle([a.latitude, a.longitude], { radius: a.radiusKm * 1000, color: '#c0392b' }).bindTooltip(textNode(a.title)).addTo(map));
-        if (areaCircles.length) map.fitBounds(L.featureGroup(areaCircles).getBounds());
+            L.circle([a.latitude, a.longitude], {
+                radius: a.radiusKm * 1000,
+                color: color('--orange'), weight: 2, fillColor: color('--orange'), fillOpacity: 0.12
+            }).bindTooltip(textNode(a.title)).addTo(map));
+        if (areaCircles.length) map.fitBounds(L.featureGroup(areaCircles).getBounds(), { padding: [40, 40] });
 
-        let trackLine = null;
+        let track = null;
         let latestRequest = 0;
         showTrack = async threatId => {
             const request = ++latestRequest;
+            showNote('');
             const response = await fetch(`/api/history/threats/${encodeURIComponent(threatId)}/track`);
-            if (!response.ok) return;
+            if (request !== latestRequest) return;
+            if (!response.ok) { showNote('Не вдалося завантажити трек.'); return; }
             const body = await response.json();
             if (request !== latestRequest) return;
+            if (track) track.remove();
+            track = null;
             const points = body.map(p => [p.lat, p.lon]);
-            if (trackLine) trackLine.remove();
-            if (!points.length) return;
-            trackLine = L.polyline(points, { color: '#2563eb' }).addTo(map);
-            map.fitBounds(trackLine.getBounds());
+            if (!points.length) { showNote('Для цієї цілі трек не збережено.'); return; }
+
+            const line = L.polyline(points, { color: color('--blue'), weight: 3, opacity: 0.9 });
+            const start = L.circleMarker(points[0], { radius: 4, color: color('--blue'), weight: 2, fillColor: '#fff', fillOpacity: 1 });
+            const end = L.circleMarker(points[points.length - 1], { radius: 7, color: '#fff', weight: 2, fillColor: color('--orange'), fillOpacity: 1 });
+            track = L.featureGroup([line, start, end]).addTo(map);
+            map.fitBounds(track.getBounds(), { padding: [48, 48], maxZoom: 11, animate: !reducedMotion });
+
+            const box = map.getContainer().getBoundingClientRect();
+            if (box.bottom < 0 || box.top > innerHeight)
+                map.getContainer().scrollIntoView({ behavior: reducedMotion ? 'auto' : 'smooth', block: 'start' });
         };
 
         data.alerts.forEach(a =>
-            L.marker([a.lat, a.lon]).bindTooltip(textNode(`${a.title} — ${a.areaTitle}`)).on('click', () => showTrack(a.threatId)).addTo(map));
+            L.circleMarker([a.lat, a.lon], {
+                radius: 6, color: color('--paper'), weight: 2, fillColor: color('--ink'), fillOpacity: 1
+            }).bindTooltip(textNode(`${a.title} — ${a.areaTitle}`)).on('click', () => select(a.threatId)).addTo(map));
     }
 </script>
 </body>

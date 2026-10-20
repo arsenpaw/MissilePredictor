@@ -21,6 +21,30 @@ public class IndexModel(HistoryQueries queries, IOptions<NeptunConfig> config) :
 
     public bool HasPrevious => Alerts.Page > 1;
     public bool HasNext => Alerts.Page * Alerts.PageSize < Alerts.Total;
+    public bool IsFiltered => From is not null || To is not null || !string.IsNullOrEmpty(Area) || !string.IsNullOrEmpty(Type);
+
+    /// <summary>This page's alerts grouped by Kyiv calendar day, newest first.</summary>
+    public IEnumerable<IGrouping<DateTime, NeptunAlert>> Days =>
+        Alerts.Items.GroupBy(a => KyivTime.FromUtc(a.OccurredAt).Date);
+
+    /// <summary>Query values that keep the current filters on another page of results.</summary>
+    public Dictionary<string, string?> RouteFor(int page) => new()
+    {
+        ["From"] = From?.ToString("yyyy-MM-dd"),
+        ["To"] = To?.ToString("yyyy-MM-dd"),
+        ["Area"] = Area,
+        ["Type"] = Type,
+        ["PageNumber"] = page.ToString()
+    };
+
+    /// <summary>Ukrainian plural of "тривога" for <paramref name="count"/>.</summary>
+    public static string AlertsWord(int count) => (count % 100, count % 10) switch
+    {
+        ( >= 11 and <= 14, _) => "тривог",
+        (_, 1) => "тривога",
+        (_, >= 2 and <= 4) => "тривоги",
+        _ => "тривог"
+    };
 
     public async Task OnGetAsync(CancellationToken ct)
     {
