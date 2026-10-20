@@ -13,6 +13,7 @@
     volumes:
       - /home/arsen/missile-prefictor:/app/data
     environment:
+      - TelegramAi__Enabled=${TELEGRAM_AI_ENABLED:-true}
       - Telegram__ApiId=${TELEGRAM_API_ID}
       - Telegram__ApiHash=${TELEGRAM_API_HASH}
       - Telegram__Channel=${TELEGRAM_CHANNEL}

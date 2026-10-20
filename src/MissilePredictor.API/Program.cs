@@ -1,4 +1,5 @@
 using MissilePredictor.API.Extensions;
+using MissilePredictor.API.Telegram;
 using Serilog;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -16,10 +17,16 @@ builder.Services.AddSwaggerGen();
 
 // The Telegram:Mock / HomeAssistant:Mock switches are read from builder.Configuration here, at
 // registration time, so the integration tests can flip them with UseSetting.
+var telegramAi = TelegramAiSwitch.IsEnabled(builder.Configuration);
+if (telegramAi)
+{
+    builder.Services
+        .AddTelegramScraper(builder.Configuration)
+        .AddSentimentModel(builder.Configuration)
+        .AddGoogleSheets(builder.Configuration);
+}
+
 builder.Services
-    .AddTelegramScraper(builder.Configuration)
-    .AddSentimentModel(builder.Configuration)
-    .AddGoogleSheets(builder.Configuration)
     .AddAlerts(builder.Configuration)
     .AddNeptunStream(builder.Configuration)
     .AddJobs();
@@ -27,12 +34,18 @@ builder.Services
 
 var app = builder.Build();
 
+if (!telegramAi)
+{
+    app.Logger.LogWarning(
+        "Telegram/AI pipeline disabled ({Key}=false): no Telegram scraper, ML model, Google Sheets or nightly jobs.",
+        TelegramAiSwitch.Key);
+}
 
 app.UseSwagger();
 app.UseSwaggerUI();
 
 app.UseHttpsRedirection();
-app.UseJobs();
+app.UseJobs(telegramAi);
 
 app.Run();
 
