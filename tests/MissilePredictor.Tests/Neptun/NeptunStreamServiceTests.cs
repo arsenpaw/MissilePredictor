@@ -96,6 +96,19 @@ public class NeptunStreamServiceTests
     }
 
     [Fact]
+    public async Task Stream_StillAlerts_WhenHistoryRecorderThrows()
+    {
+        await using var server = await FakeNeptunServer.StartAsync();
+        var alerts = new RecordingAlertClient();
+        await using var _ = await StartServiceAsync(server.Url, alerts, new ThrowingHistoryRecorder(), TestAreas.Lviv);
+
+        var neptun = await server.NextConnectionAsync(ReconnectTimeout);
+        await neptun.SendAsync(Upsert(Threat("trk_1", InsideLat, InsideLon)));
+
+        Assert.EndsWith("trk_1", Assert.Single(await alerts.NextAsync(AlertTimeout)));
+    }
+
+    [Fact]
     public async Task Stream_RecordsPositionsForAllThreats()
     {
         await using var server = await FakeNeptunServer.StartAsync();

@@ -18,34 +18,43 @@ public class HistoryWriterServiceTests
         var recorder = new NeptunHistoryRecorder();
         var writer = new HistoryWriterService(recorder, history, NullLogger<HistoryWriterService>.Instance);
         await writer.StartAsync(CancellationToken.None);
+        try
+        {
+            var threat = Threat("trk_1", InsideLat, InsideLon);
+            recorder.RecordPosition(threat);
+            recorder.RecordPosition(Threat("trk_1", InsideLat, InsideLon + 0.01));
+            recorder.RecordAlert(TestAreas.Lviv, threat, true, null);
 
-        var threat = Threat("trk_1", InsideLat, InsideLon);
-        recorder.RecordPosition(threat);
-        recorder.RecordPosition(Threat("trk_1", InsideLat, InsideLon + 0.01));
-        recorder.RecordAlert(TestAreas.Lviv, threat, true, null);
-
-        await WaitUntilAsync(history, db => db.Alerts.Count() == 1 && db.TrackPoints.Count() == 2);
-        await writer.StopAsync(CancellationToken.None);
+            await WaitUntilAsync(history, db => db.Alerts.Count() == 1 && db.TrackPoints.Count() == 2);
+        }
+        finally
+        {
+            await writer.StopAsync(CancellationToken.None);
+        }
     }
 
     [Fact]
     public async Task Writer_WhenSaveFails_KeepsRunningAndWritesLaterBatches()
     {
         using var history = new InMemoryHistoryDb();
+        var failing = new FailOnceHistoryDb(history);
         var recorder = new NeptunHistoryRecorder();
-        var writer = new HistoryWriterService(
-            recorder, new FailOnceHistoryDb(history), NullLogger<HistoryWriterService>.Instance);
+        var writer = new HistoryWriterService(recorder, failing, NullLogger<HistoryWriterService>.Instance);
         await writer.StartAsync(CancellationToken.None);
+        try
+        {
+            recorder.RecordPosition(Threat("lost", InsideLat, InsideLon));
+            await failing.FirstFailure.WaitAsync(PollTimeout);
+            recorder.RecordPosition(Threat("kept", InsideLat, InsideLon));
 
-        recorder.RecordPosition(Threat("lost", InsideLat, InsideLon));
-        // Give the writer time to consume (and fail) the first batch before queueing the next.
-        await Task.Delay(300);
-        recorder.RecordPosition(Threat("kept", InsideLat, InsideLon));
-
-        await WaitUntilAsync(history, db => db.TrackPoints.Any(p => p.ThreatId == "kept"));
-        await using var read = history.CreateDbContext();
-        Assert.DoesNotContain(read.TrackPoints, p => p.ThreatId == "lost");
-        await writer.StopAsync(CancellationToken.None);
+            await WaitUntilAsync(history, db => db.TrackPoints.Any(p => p.ThreatId == "kept"));
+            await using var read = history.CreateDbContext();
+            Assert.DoesNotContain(read.TrackPoints, p => p.ThreatId == "lost");
+        }
+        finally
+        {
+            await writer.StopAsync(CancellationToken.None);
+        }
     }
 
     private static async Task WaitUntilAsync(InMemoryHistoryDb history, Func<HistoryDbContext, bool> condition)

@@ -66,8 +66,7 @@ public class AppBootTests : IClassFixture<OfflineAppFixture>
         var sp = _factory.Services;
         Assert.IsType<ConsoleAlertClient>(sp.GetRequiredService<IAlertClient>());
 
-        var neptun = await _app.Neptun.NextConnectionAsync(TimeSpan.FromSeconds(10));
-        await neptun.SendAsync(Upsert(Threat("trk_boot", InsideLat, InsideLon)));
+        await _app.Neptun.SendAsync(Upsert(Threat("trk_boot", InsideLat, InsideLon)));
 
         var options = new DbContextOptionsBuilder<HistoryDbContext>()
             .UseSqlite($"Data Source={_factory.HistoryDbPath}").Options;
