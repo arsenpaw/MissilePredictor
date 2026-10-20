@@ -27,6 +27,7 @@ if (telegramAi)
 }
 
 builder.Services
+    .AddHistory(builder.Configuration)
     .AddAlerts(builder.Configuration)
     .AddNeptunStream(builder.Configuration)
     .AddJobs();

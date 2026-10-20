@@ -42,4 +42,12 @@ public class AppBootTests : IClassFixture<OfflineAppFixture>
         Assert.DoesNotContain("model-training", ids);
         Assert.DoesNotContain("restart-app", ids);
     }
+
+    [Fact]
+    public void Boot_CreatesHistoryDatabase()
+    {
+        Assert.IsType<ConsoleAlertClient>(_factory.Services.GetRequiredService<IAlertClient>());
+
+        Assert.True(File.Exists(_factory.HistoryDbPath));
+    }
 }
