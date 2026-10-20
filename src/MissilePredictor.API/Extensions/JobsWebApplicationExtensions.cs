@@ -6,13 +6,18 @@ namespace MissilePredictor.API.Extensions;
 
 public static class JobsWebApplicationExtensions
 {
-    /// <summary>Mounts the Hangfire dashboard and, when the Telegram/AI pipeline is enabled, schedules the recurring jobs.</summary>
+    /// <summary>Mounts the Hangfire dashboard and schedules the recurring jobs (the Telegram/AI ones only when that pipeline is enabled).</summary>
     public static WebApplication UseJobs(this WebApplication app, bool telegramAiEnabled)
     {
         app.UseHangfireDashboard("/hangfire", new DashboardOptions
         {
             Authorization = Array.Empty<IDashboardAuthorizationFilter>()
         });
+
+        RecurringJob.AddOrUpdate<HistoryCleanupJob>(
+            "history-cleanup",
+            job => job.Execute(null!),
+            Cron.Hourly());
 
         if (!telegramAiEnabled)
         {

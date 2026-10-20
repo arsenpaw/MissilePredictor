@@ -50,6 +50,7 @@ public class AppBootTests : IClassFixture<OfflineAppFixture>
         Assert.DoesNotContain("sync-telegram", ids);
         Assert.DoesNotContain("model-training", ids);
         Assert.DoesNotContain("restart-app", ids);
+        Assert.Contains("history-cleanup", ids);
     }
 
     [Fact]
