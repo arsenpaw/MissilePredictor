@@ -1,6 +1,7 @@
 using System.Text.Json;
 using MissilePredictor.API.Areas;
 using MissilePredictor.API.Neptun.Models;
+using MissilePredictor.TestKit;
 
 namespace MissilePredictor.Tests.Areas;
 
@@ -13,16 +14,16 @@ public class AreaThreatTrackerTests
     [Fact]
     public void Lviv_ContainsNearbyPoints_AndNotKyiv()
     {
-        Assert.True(Area.Lviv.Contains(Area.Lviv.Latitude, Area.Lviv.Longitude));
-        Assert.True(Area.Lviv.Contains(InsideLat, InsideLon));
-        Assert.False(Area.Lviv.Contains(KyivLat, KyivLon));
-        Assert.InRange(Area.Lviv.DistanceKm(KyivLat, KyivLon), 460, 480);
+        Assert.True(TestAreas.Lviv.Contains(TestAreas.Lviv.Latitude, TestAreas.Lviv.Longitude));
+        Assert.True(TestAreas.Lviv.Contains(InsideLat, InsideLon));
+        Assert.False(TestAreas.Lviv.Contains(KyivLat, KyivLon));
+        Assert.InRange(TestAreas.Lviv.DistanceKm(KyivLat, KyivLon), 460, 480);
     }
 
     [Fact]
     public void TryEnter_ReportsTargetOnceWhenItEnters()
     {
-        var tracker = new AreaThreatTracker(Area.Lviv);
+        var tracker = new AreaThreatTracker(TestAreas.Lviv);
 
         Assert.False(tracker.TryEnter(Threat("trk_1", KyivLat, KyivLon)));
         Assert.True(tracker.TryEnter(Threat("trk_1", InsideLat, InsideLon)));
@@ -32,7 +33,7 @@ public class AreaThreatTrackerTests
     [Fact]
     public void TryEnter_ReportsAgainAfterTargetLeavesAndReturns()
     {
-        var tracker = new AreaThreatTracker(Area.Lviv);
+        var tracker = new AreaThreatTracker(TestAreas.Lviv);
 
         Assert.True(tracker.TryEnter(Threat("trk_1", InsideLat, InsideLon)));
         Assert.False(tracker.TryEnter(Threat("trk_1", KyivLat, KyivLon)));
@@ -42,7 +43,7 @@ public class AreaThreatTrackerTests
     [Fact]
     public void TryEnter_IgnoresAdvisoryAreaOnlyAndInactiveTargets()
     {
-        var tracker = new AreaThreatTracker(Area.Lviv);
+        var tracker = new AreaThreatTracker(TestAreas.Lviv);
 
         Assert.False(tracker.TryEnter(Threat("advisory", InsideLat, InsideLon, advisory: true)));
         Assert.False(tracker.TryEnter(Threat("area-only", InsideLat, InsideLon, areaOnly: true)));
@@ -56,7 +57,7 @@ public class AreaThreatTrackerTests
     [Fact]
     public void Remove_ForgetsTarget()
     {
-        var tracker = new AreaThreatTracker(Area.Lviv);
+        var tracker = new AreaThreatTracker(TestAreas.Lviv);
 
         Assert.True(tracker.TryEnter(Threat("trk_1", InsideLat, InsideLon)));
         tracker.Remove("trk_1");
@@ -66,7 +67,7 @@ public class AreaThreatTrackerTests
     [Fact]
     public void ApplySnapshot_ReportsInsideTargets_AndStaysQuietOnReconnect()
     {
-        var tracker = new AreaThreatTracker(Area.Lviv);
+        var tracker = new AreaThreatTracker(TestAreas.Lviv);
         var snapshot = new[] { Threat("in", InsideLat, InsideLon), Threat("out", KyivLat, KyivLon) };
 
         Assert.Equal(["in"], tracker.ApplySnapshot(snapshot).Select(t => t.Id));
@@ -76,7 +77,7 @@ public class AreaThreatTrackerTests
     [Fact]
     public void ApplySnapshot_DropsTargetsMissingFromIt()
     {
-        var tracker = new AreaThreatTracker(Area.Lviv);
+        var tracker = new AreaThreatTracker(TestAreas.Lviv);
         Assert.True(tracker.TryEnter(Threat("trk_1", InsideLat, InsideLon)));
 
         // trk_1 vanished while we were disconnected, so its next appearance is a fresh entry.

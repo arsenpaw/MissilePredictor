@@ -9,7 +9,7 @@ namespace MissilePredictor.API.Neptun;
 
 /// <summary>
 /// Listens to the NEPTUN threat stream and fires the Home Assistant webhook when a target
-/// enters the tracked area. Reconnects with exponential backoff whenever the socket drops.
+/// enters a tracked area. Reconnects with exponential backoff whenever the socket drops.
 /// </summary>
 public sealed class NeptunStreamService : BackgroundService
 {
@@ -22,27 +22,30 @@ public sealed class NeptunStreamService : BackgroundService
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
     private readonly NeptunConfig _config;
-    private readonly AreaThreatTracker _tracker;
+    private readonly IReadOnlyList<AreaThreatTracker> _trackers;
     private readonly IAlertClient _alertClient;
     private readonly ILogger<NeptunStreamService> _logger;
     private TimeSpan _backoff = InitialBackoff;
 
     public NeptunStreamService(
         IOptions<NeptunConfig> config,
-        AreaThreatTracker tracker,
+        IReadOnlyList<AreaThreatTracker> trackers,
         IAlertClient alertClient,
         ILogger<NeptunStreamService> logger)
     {
         _config = config.Value;
-        _tracker = tracker;
+        _trackers = trackers;
         _alertClient = alertClient;
         _logger = logger;
     }
 
     protected override async Task ExecuteAsync(CancellationToken ct)
     {
-        _logger.LogInformation("NeptunStreamService watching area '{Area}' ({Lat}, {Lon}, r={Radius} km)",
-            _tracker.Area.Title, _tracker.Area.Latitude, _tracker.Area.Longitude, _tracker.Area.RadiusKm);
+        foreach (var tracker in _trackers)
+        {
+            _logger.LogInformation("NeptunStreamService watching area '{Area}' ({Lat}, {Lon}, r={Radius} km)",
+                tracker.Area.Title, tracker.Area.Latitude, tracker.Area.Longitude, tracker.Area.RadiusKm);
+        }
 
         while (!ct.IsCancellationRequested)
         {
@@ -103,20 +106,26 @@ public sealed class NeptunStreamService : BackgroundService
 
     private async Task HandleFrameAsync(ReadOnlyMemory<byte> json, CancellationToken ct)
     {
-        IReadOnlyList<NeptunThreat> entered;
+        var entered = new List<(Area Area, NeptunThreat Threat)>();
         try
         {
             var envelope = JsonSerializer.Deserialize<NeptunEnvelope>(json.Span, JsonOptions);
-            entered = envelope?.Type switch
+            switch (envelope?.Type)
             {
-                "snapshot" => _tracker.ApplySnapshot(
-                    envelope.Data.Deserialize<NeptunSnapshot>(JsonOptions)?.Threats ?? []),
-                "upsert" when envelope.Data.Deserialize<NeptunThreat>(JsonOptions) is { } threat
-                    => _tracker.TryEnter(threat) ? [threat] : [],
-                "remove" when envelope.Data.Deserialize<NeptunRemove>(JsonOptions) is { } removed
-                    => RemoveThreat(removed.Id),
-                _ => []
-            };
+                case "snapshot":
+                    var threats = envelope.Data.Deserialize<NeptunSnapshot>(JsonOptions)?.Threats ?? [];
+                    foreach (var tracker in _trackers)
+                        entered.AddRange(tracker.ApplySnapshot(threats).Select(t => (tracker.Area, t)));
+                    break;
+                case "upsert" when envelope.Data.Deserialize<NeptunThreat>(JsonOptions) is { } threat:
+                    foreach (var tracker in _trackers.Where(t => t.TryEnter(threat)))
+                        entered.Add((tracker.Area, threat));
+                    break;
+                case "remove" when envelope.Data.Deserialize<NeptunRemove>(JsonOptions) is { } removed:
+                    foreach (var tracker in _trackers)
+                        tracker.Remove(removed.Id);
+                    break;
+            }
         }
         catch (JsonException ex)
         {
@@ -126,17 +135,17 @@ public sealed class NeptunStreamService : BackgroundService
 
         if (entered.Count == 0) return;
 
-        foreach (var threat in entered)
+        foreach (var (area, threat) in entered)
         {
             _logger.LogWarning(
                 "Target entered '{Area}', sending alert: Id={Id} Type={Type} Title={Title} Lat={Lat} Lon={Lon} DistanceKm={Distance:F1}",
-                _tracker.Area.Title, threat.Id, threat.Type, threat.Title, threat.Lat, threat.Lon,
-                _tracker.Area.DistanceKm(threat.Lat, threat.Lon));
+                area.Title, threat.Id, threat.Type, threat.Title, threat.Lat, threat.Lon,
+                area.DistanceKm(threat.Lat, threat.Lon));
         }
 
         try
         {
-            await _alertClient.TriggerAlertAutomationAsync(entered.Select(FormatAlert), ct);
+            await _alertClient.TriggerAlertAutomationAsync(entered.Select(e => FormatAlert(e.Area, e.Threat)), ct);
         }
         catch (Exception ex)
         {
@@ -144,16 +153,10 @@ public sealed class NeptunStreamService : BackgroundService
         }
     }
 
-    private IReadOnlyList<NeptunThreat> RemoveThreat(string id)
+    private static string FormatAlert(Area area, NeptunThreat threat)
     {
-        _tracker.Remove(id);
-        return [];
-    }
-
-    private string FormatAlert(NeptunThreat threat)
-    {
-        var distance = _tracker.Area.DistanceKm(threat.Lat, threat.Lon);
-        var alert = $"🚨 {threat.Title} — {_tracker.Area.Title}, {distance:F0} км від Львову.";
+        var distance = area.DistanceKm(threat.Lat, threat.Lon);
+        var alert = $"🚨 {threat.Title} — {area.Title}, {distance:F0} км від {area.From}.";
         return string.IsNullOrWhiteSpace(threat.ExplanationShort) ? alert : $"{alert} {threat.ExplanationShort}";
     }
 }

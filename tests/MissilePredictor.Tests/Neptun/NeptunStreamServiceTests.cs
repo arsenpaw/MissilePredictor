@@ -64,11 +64,43 @@ public class NeptunStreamServiceTests
         Assert.EndsWith("trk_2", Assert.Single(await alerts.NextAsync(AlertTimeout)));
     }
 
-    private static async Task<IAsyncDisposable> StartServiceAsync(string url, IAlertClient alerts)
+    [Fact]
+    public async Task TargetEnteringLviv_AlertTextMatchesFormat()
     {
+        await using var server = await FakeNeptunServer.StartAsync();
+        var alerts = new RecordingAlertClient();
+        await using var _ = await StartServiceAsync(server.Url, alerts);
+
+        var neptun = await server.NextConnectionAsync(ReconnectTimeout);
+        await neptun.SendAsync(Upsert(Threat("trk_1", InsideLat, InsideLon)));
+
+        Assert.Equal("🚨 БпЛА — Львів, 4 км від Львову. trk_1", Assert.Single(await alerts.NextAsync(AlertTimeout)));
+    }
+
+    [Fact]
+    public async Task TargetInsideTwoAreas_AlertsOncePerArea()
+    {
+        await using var server = await FakeNeptunServer.StartAsync();
+        var alerts = new RecordingAlertClient();
+        var sykhiv = new Area("Сихів", InsideLat, InsideLon, 3, "Сихова");
+        await using var _ = await StartServiceAsync(server.Url, alerts, TestAreas.Lviv, sykhiv);
+
+        var neptun = await server.NextConnectionAsync(ReconnectTimeout);
+        await neptun.SendAsync(Upsert(Threat("trk_1", InsideLat, InsideLon)));
+
+        var messages = await alerts.NextAsync(AlertTimeout);
+        Assert.Equal(2, messages.Count());
+        Assert.Single(messages.Where(m => m.Contains("Львів")));
+        Assert.Single(messages.Where(m => m.Contains("Сихів")));
+    }
+
+    private static async Task<IAsyncDisposable> StartServiceAsync(
+        string url, IAlertClient alerts, params Area[] areas)
+    {
+        var watched = areas.Length > 0 ? areas : [TestAreas.Lviv];
         var service = new NeptunStreamService(
             Options.Create(new NeptunConfig { StreamUrl = url }),
-            new AreaThreatTracker(Area.Lviv),
+            watched.Select(a => new AreaThreatTracker(a)).ToList(),
             alerts,
             NullLogger<NeptunStreamService>.Instance);
 

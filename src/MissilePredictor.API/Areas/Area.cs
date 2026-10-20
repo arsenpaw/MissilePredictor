@@ -2,12 +2,11 @@ namespace MissilePredictor.API.Areas;
 
 /// <summary>
 /// A circular zone on the map. A target counts as inside when its reported position is
-/// within <see cref="RadiusKm"/> of the centre.
+/// within <see cref="RadiusKm"/> of the centre. <see cref="From"/> is the genitive form of the
+/// place name used in alert text ("км від Львову").
 /// </summary>
-public sealed record Area(string Title, double Latitude, double Longitude, double RadiusKm)
+public sealed record Area(string Title, double Latitude, double Longitude, double RadiusKm, string From)
 {
-    public static readonly Area Lviv = new("Львів", 49.8397, 24.0297, 10);
-
     private const double EarthRadiusKm = 6371.0;
 
     public bool Contains(double latitude, double longitude) => DistanceKm(latitude, longitude) <= RadiusKm;
