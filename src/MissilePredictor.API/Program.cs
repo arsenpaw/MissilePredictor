@@ -47,6 +47,7 @@ app.UseSwaggerUI();
 
 app.UseHttpsRedirection();
 app.UseJobs(telegramAi);
+app.MapHistory();
 
 app.Run();
 

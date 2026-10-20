@@ -1,3 +1,5 @@
+using System.Net.Http.Json;
+using System.Text.Json;
 using Hangfire;
 using Hangfire.Storage;
 using Microsoft.Data.Sqlite;
@@ -84,5 +86,42 @@ public class AppBootTests : IClassFixture<OfflineAppFixture>
 
             await Task.Delay(50, cts.Token);
         }
+    }
+
+    [Fact]
+    public async Task AlertsEndpoint_ReturnsOk()
+    {
+        Assert.IsType<ConsoleAlertClient>(_factory.Services.GetRequiredService<IAlertClient>());
+
+        var response = await _factory.CreateClient().GetAsync("/api/history/alerts?pageSize=5");
+
+        response.EnsureSuccessStatusCode();
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(JsonValueKind.Array, body.GetProperty("items").ValueKind);
+        Assert.True(body.GetProperty("total").GetInt32() >= 0);
+    }
+
+    [Fact]
+    public async Task TrackEndpoint_UnknownThreat_ReturnsEmptyArray()
+    {
+        Assert.IsType<ConsoleAlertClient>(_factory.Services.GetRequiredService<IAlertClient>());
+
+        var response = await _factory.CreateClient().GetAsync($"/api/history/threats/unknown_{Guid.NewGuid():N}/track");
+
+        response.EnsureSuccessStatusCode();
+        Assert.Equal("[]", await response.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
+    public async Task AreasEndpoint_ReturnsConfiguredLviv()
+    {
+        Assert.IsType<ConsoleAlertClient>(_factory.Services.GetRequiredService<IAlertClient>());
+
+        var response = await _factory.CreateClient().GetAsync("/api/history/areas");
+
+        response.EnsureSuccessStatusCode();
+        var areas = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Contains(areas.EnumerateArray(), a =>
+            a.GetProperty("title").GetString() == "Львів" && a.GetProperty("radiusKm").GetDouble() == 10);
     }
 }

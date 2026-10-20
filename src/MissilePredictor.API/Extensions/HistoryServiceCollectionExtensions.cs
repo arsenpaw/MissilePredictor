@@ -18,6 +18,7 @@ public static class HistoryServiceCollectionExtensions
             builder.UseSqlite(sp.GetRequiredService<IOptions<HistoryOptions>>().Value.ConnectionString));
         services.AddHostedService<HistoryMigrationService>();
 
+        services.AddSingleton<HistoryQueries>();
         services.AddSingleton<NeptunHistoryRecorder>();
         services.AddSingleton<INeptunHistoryRecorder>(sp => sp.GetRequiredService<NeptunHistoryRecorder>());
         services.AddHostedService<HistoryWriterService>();
