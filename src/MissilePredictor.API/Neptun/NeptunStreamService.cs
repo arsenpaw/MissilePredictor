@@ -3,6 +3,7 @@ using System.Text.Json;
 using Microsoft.Extensions.Options;
 using MissilePredictor.API.Alerts;
 using MissilePredictor.API.Areas;
+using MissilePredictor.API.History;
 using MissilePredictor.API.Neptun.Models;
 
 namespace MissilePredictor.API.Neptun;
@@ -24,6 +25,7 @@ public sealed class NeptunStreamService : BackgroundService
     private readonly NeptunConfig _config;
     private readonly IReadOnlyList<AreaThreatTracker> _trackers;
     private readonly IAlertClient _alertClient;
+    private readonly INeptunHistoryRecorder _history;
     private readonly ILogger<NeptunStreamService> _logger;
     private TimeSpan _backoff = InitialBackoff;
 
@@ -31,11 +33,13 @@ public sealed class NeptunStreamService : BackgroundService
         IOptions<NeptunConfig> config,
         IReadOnlyList<AreaThreatTracker> trackers,
         IAlertClient alertClient,
+        INeptunHistoryRecorder history,
         ILogger<NeptunStreamService> logger)
     {
         _config = config.Value;
         _trackers = trackers;
         _alertClient = alertClient;
+        _history = history;
         _logger = logger;
     }
 
@@ -114,14 +118,18 @@ public sealed class NeptunStreamService : BackgroundService
             {
                 case "snapshot":
                     var threats = envelope.Data.Deserialize<NeptunSnapshot>(JsonOptions)?.Threats ?? [];
+                    foreach (var t in threats)
+                        _history.RecordPosition(t);
                     foreach (var tracker in _trackers)
                         entered.AddRange(tracker.ApplySnapshot(threats).Select(t => (tracker.Area, t)));
                     break;
                 case "upsert" when envelope.Data.Deserialize<NeptunThreat>(JsonOptions) is { } threat:
+                    _history.RecordPosition(threat);
                     foreach (var tracker in _trackers.Where(t => t.TryEnter(threat)))
                         entered.Add((tracker.Area, threat));
                     break;
                 case "remove" when envelope.Data.Deserialize<NeptunRemove>(JsonOptions) is { } removed:
+                    _history.Forget(removed.Id);
                     foreach (var tracker in _trackers)
                         tracker.Remove(removed.Id);
                     break;
@@ -143,14 +151,19 @@ public sealed class NeptunStreamService : BackgroundService
                 area.DistanceKm(threat.Lat, threat.Lon));
         }
 
+        Exception? failure = null;
         try
         {
             await _alertClient.TriggerAlertAutomationAsync(entered.Select(e => FormatAlert(e.Area, e.Threat)), ct);
         }
         catch (Exception ex)
         {
+            failure = ex;
             _logger.LogError(ex, "Home Assistant alert failed for {Count} Neptun target(s)", entered.Count);
         }
+
+        foreach (var (area, threat) in entered)
+            _history.RecordAlert(area, threat, failure is null, failure?.Message);
     }
 
     private static string FormatAlert(Area area, NeptunThreat threat)

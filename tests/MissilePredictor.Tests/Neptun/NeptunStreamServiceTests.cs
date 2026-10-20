@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using MissilePredictor.API.Alerts;
 using MissilePredictor.API.Areas;
+using MissilePredictor.API.History;
 using MissilePredictor.API.Neptun;
 using MissilePredictor.TestKit;
 using MissilePredictor.TestKit.Fakes;
@@ -94,14 +95,81 @@ public class NeptunStreamServiceTests
         Assert.Single(messages.Where(m => m.Contains("Сихів")));
     }
 
+    [Fact]
+    public async Task Stream_RecordsPositionsForAllThreats()
+    {
+        await using var server = await FakeNeptunServer.StartAsync();
+        var history = new RecordingHistoryRecorder();
+        await using var _ = await StartServiceAsync(server.Url, new RecordingAlertClient(), history, TestAreas.Lviv);
+
+        var neptun = await server.NextConnectionAsync(ReconnectTimeout);
+        await neptun.SendAsync(Upsert(Threat("kyiv", KyivLat, KyivLon)));
+        await neptun.SendAsync(Upsert(Threat("lviv", InsideLat, InsideLon)));
+
+        await WaitUntilAsync(() => history.Positions.Count == 2);
+        Assert.Equal(["kyiv", "lviv"], history.Positions.Select(p => p.Id));
+    }
+
+    [Fact]
+    public async Task Stream_RecordsAlertAsSent()
+    {
+        await using var server = await FakeNeptunServer.StartAsync();
+        var alerts = new RecordingAlertClient();
+        var history = new RecordingHistoryRecorder();
+        await using var _ = await StartServiceAsync(server.Url, alerts, history, TestAreas.Lviv);
+
+        var neptun = await server.NextConnectionAsync(ReconnectTimeout);
+        await neptun.SendAsync(Upsert(Threat("trk_1", InsideLat, InsideLon)));
+        await alerts.NextAsync(AlertTimeout);
+
+        await WaitUntilAsync(() => history.Alerts.Count == 1);
+        var alert = Assert.Single(history.Alerts);
+        Assert.Equal("Львів", alert.Area.Title);
+        Assert.Equal("trk_1", alert.Threat.Id);
+        Assert.True(alert.Sent);
+        Assert.Null(alert.Error);
+    }
+
+    [Fact]
+    public async Task Stream_RecordsAlertAsFailed_WhenHomeAssistantThrows()
+    {
+        await using var server = await FakeNeptunServer.StartAsync();
+        var history = new RecordingHistoryRecorder();
+        await using var _ = await StartServiceAsync(server.Url, new ThrowingAlertClient(), history, TestAreas.Lviv);
+
+        var neptun = await server.NextConnectionAsync(ReconnectTimeout);
+        await neptun.SendAsync(Upsert(Threat("trk_1", InsideLat, InsideLon)));
+        await WaitUntilAsync(() => history.Alerts.Count == 1);
+
+        var alert = Assert.Single(history.Alerts);
+        Assert.False(alert.Sent);
+        Assert.Equal("HA down", alert.Error);
+
+        // The stream survives the failure and keeps processing frames.
+        await neptun.SendAsync(Upsert(Threat("trk_2", InsideLat, InsideLon)));
+        await WaitUntilAsync(() => history.Alerts.Count == 2);
+        Assert.Equal("trk_2", history.Alerts[1].Threat.Id);
+    }
+
+    private static async Task WaitUntilAsync(Func<bool> condition)
+    {
+        using var cts = new CancellationTokenSource(AlertTimeout);
+        while (!condition()) await Task.Delay(20, cts.Token);
+    }
+
+    private static Task<IAsyncDisposable> StartServiceAsync(
+        string url, IAlertClient alerts, params Area[] areas) =>
+        StartServiceAsync(url, alerts, new RecordingHistoryRecorder(), areas);
+
     private static async Task<IAsyncDisposable> StartServiceAsync(
-        string url, IAlertClient alerts, params Area[] areas)
+        string url, IAlertClient alerts, INeptunHistoryRecorder history, params Area[] areas)
     {
         var watched = areas.Length > 0 ? areas : [TestAreas.Lviv];
         var service = new NeptunStreamService(
             Options.Create(new NeptunConfig { StreamUrl = url }),
             watched.Select(a => new AreaThreatTracker(a)).ToList(),
             alerts,
+            history,
             NullLogger<NeptunStreamService>.Instance);
 
         await service.StartAsync(CancellationToken.None);

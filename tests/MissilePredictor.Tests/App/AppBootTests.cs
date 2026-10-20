@@ -1,10 +1,14 @@
 using Hangfire;
 using Hangfire.Storage;
+using Microsoft.Data.Sqlite;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using MissilePredictor.AI.GoogleSheets;
 using MissilePredictor.AI.Sentiment;
 using MissilePredictor.API.Alerts;
+using MissilePredictor.API.History;
 using MissilePredictor.API.Telegram;
+using static MissilePredictor.TestKit.Fakes.FakeNeptunServer;
 
 namespace MissilePredictor.Tests.App;
 
@@ -14,9 +18,14 @@ namespace MissilePredictor.Tests.App;
 /// </summary>
 public class AppBootTests : IClassFixture<OfflineAppFixture>
 {
+    private readonly OfflineAppFixture _app;
     private readonly OfflineAppFactory _factory;
 
-    public AppBootTests(OfflineAppFixture app) => _factory = app.Factory;
+    public AppBootTests(OfflineAppFixture app)
+    {
+        _app = app;
+        _factory = app.Factory;
+    }
 
     [Fact]
     public void Disabled_StartsWithoutTelegramOrAiServices()
@@ -49,5 +58,31 @@ public class AppBootTests : IClassFixture<OfflineAppFixture>
         Assert.IsType<ConsoleAlertClient>(_factory.Services.GetRequiredService<IAlertClient>());
 
         Assert.True(File.Exists(_factory.HistoryDbPath));
+    }
+
+    [Fact]
+    public async Task DroneOverLviv_IsStoredInHistory()
+    {
+        var sp = _factory.Services;
+        Assert.IsType<ConsoleAlertClient>(sp.GetRequiredService<IAlertClient>());
+
+        var neptun = await _app.Neptun.NextConnectionAsync(TimeSpan.FromSeconds(10));
+        await neptun.SendAsync(Upsert(Threat("trk_boot", InsideLat, InsideLon)));
+
+        var options = new DbContextOptionsBuilder<HistoryDbContext>()
+            .UseSqlite($"Data Source={_factory.HistoryDbPath}").Options;
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        while (true)
+        {
+            await using var db = new HistoryDbContext(options);
+            if (await db.Alerts.AnyAsync(a => a.ThreatId == "trk_boot", cts.Token)
+                && await db.TrackPoints.AnyAsync(p => p.ThreatId == "trk_boot", cts.Token))
+            {
+                Assert.Equal("trk_boot", (await db.Alerts.SingleAsync(a => a.ThreatId == "trk_boot", cts.Token)).ThreatId);
+                return;
+            }
+
+            await Task.Delay(50, cts.Token);
+        }
     }
 }
